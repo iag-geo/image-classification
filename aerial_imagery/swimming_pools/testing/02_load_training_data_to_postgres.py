@@ -9,7 +9,6 @@ import rasterio
 from datetime import datetime
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-from owslib.wms import WebMapService
 
 # how many parallel processes to run
 cpu_count = 4
@@ -65,33 +64,30 @@ def get_image(file_path):
 def make_wkt_point(x_centre, y_centre):
     return f"POINT({x_centre} {y_centre})"
 
+
 def make_wkt_polygon(x_min, y_min, x_max, y_max):
     return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
 
 
 def convert_label_to_polygon(image, label):
-    # format of label files is:
-    #   0: unknown (always 0 in my data sample)
-    #   1: percentage distance from leftmost pixel
-    #   2: percentage distance from topmost pixel
-    #   3: percentage width
-    #   4: percentage height
+    # format of space delimited label files is:
+    #   0: unknown (always 0 in data sample)
+    #   1: centroid percentage distance from leftmost pixel
+    #   2: centroid percentage distance from topmost pixel
+    #   3: percentage width of bounding box
+    #   4: percentage height of bounding box
 
-    # # TODO: convert percentages to coordinates -- appears to put polygon offset by 1/2 width and height
-    # #  (bug in my code or misinterpretation of training labels?)
-    # x_min = image["x_min"] + image["x_width"] * float(label[1])
-    # y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]))
-    # x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]))
-    # y_max = image["y_max"] - image["y_height"] * float(label[2])
-
+    # get lat/long bounding box
     x_min = image["x_min"] + image["x_width"] * (float(label[1]) - float(label[3]) / 2.0)
     y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]) / 2.0)
     x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]) / 2.0)
     y_max = image["y_max"] - image["y_height"] * (float(label[2]) - float(label[4]) / 2.0)
 
+    # get lat/long centroid
     x_centre = (x_min + x_max) / 2.0
     y_centre = (y_min + y_max) / 2.0
 
+    # create well known text (WKT) geometries
     point = make_wkt_point(x_centre, y_centre)
     polygon = make_wkt_polygon(x_min, y_min, x_max, y_max)
 
@@ -102,37 +98,6 @@ def get_parcel_and_address_ids(latitude, longitude):
     legal_parcel_id = None
     gnaf_pid = None
     address = None
-
-    # # Get parcel ID from NSW DCS WMS service (intermittent performance - service barely running as of 20210920)
-    # wms = WebMapService(wms_base_url)
-    #
-    # try:
-    #     response = wms.getfeatureinfo(
-    #         layers=["1"],
-    #         srs='EPSG:4326',
-    #         bbox=(longitude - 0.000001, latitude - 0.000001, longitude + 0.000001, latitude + 0.000001),
-    #         query_layers=["1"],
-    #         info_format="application/json",  # JSON output not working on this server - thanks ESRI!
-    #         feature_count=1,
-    #         method='GET',
-    #         size=(2,2),
-    #         xy=(1,1)
-    #         )
-    #
-    #     # output is ugly, old XML, this is a hack to just get what we want
-    #     # b'<?xml version="1.0" encoding="UTF-8"?>\n\r\n<FeatureInfoResponse xmlns:esri_wms="http://www.esri.com/wms" xmlns="http://www.esri.com/wms">\r\n<FIELDS OBJECTID="1712612" Shape="Polygon" cadid="102901598" createdate="8/09/1993" modifieddate="8/09/1993" controllingauthorityoid="2" planoid="19032" plannumber="7796" planlabel="DP7796" ITSTitleStatus="ITSTitle" itslotid="598507" StratumLevel="Ground Level" HasStratum="False" ClassSubtype="StandardLot" lotnumber="32" sectionnumber="Null" planlotarea="Null" planlotareaunits="Null" startdate="26/11/2004 7:43:44 PM" enddate="1/01/3000" lastupdate="26/11/2004 7:43:44 PM" msoid="208734" centroidid="Null" shapeuuid="ac568fff-56c7-3150-9d4b-2ece31d365c2" changetype="I" lotidstring="32//DP7796" processstate="Null" urbanity="U" shape_Length="163.283866" shape_Area="1245.718807"></FIELDS>\r\n</FeatureInfoResponse>\r\n'
-    #     response_text = response.read().decode("utf-8")
-    #     response_list = response_text.split(" ")
-    #     for element in response_list:
-    #         if "lotidstring=" in element:
-    #             legal_parcel_id = element.replace("lotidstring=","").replace('"', '')
-    #
-    #     print(f"legal_parcel_id : {legal_parcel_id}")
-    # except:
-    #     # probably timed out
-    #     print(f"NSW DCS WMS timed out for label at {latitude}, {longitude} ")
-
-    # get data using PostGIS (was hoping to avoid this as the Cadastre is 11Gb, slowing EC2/RDS build time)
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
