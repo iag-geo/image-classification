@@ -15,7 +15,8 @@ cpu_count = 4
 
 # input and output path/table
 search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
-target_table = "data_science.swimming_pool_labels"
+label_table = "data_science.swimming_pool_labels"
+image_table = "data_science.swimming_pool_images"
 
 # create postgres connect string
 pg_connect_string = "dbname=geo host=localhost port=5432 user=postgres password=password"
@@ -57,6 +58,13 @@ def get_image(file_path):
     return output
 
 
+def make_wkt_point(x_centre, y_centre):
+    return f"POINT({x_centre} {y_centre})"
+
+def make_wkt_polygon(x_min, y_min, x_max, y_max):
+    return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
+
+
 def convert_label_to_polygon(image, label):
     # format of label files is:
     #   0: unknown (always 0 in my data sample)
@@ -77,7 +85,13 @@ def convert_label_to_polygon(image, label):
     x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]) / 2.0)
     y_max = image["y_max"] - image["y_height"] * (float(label[2]) - float(label[4]) / 2.0)
 
-    return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
+    x_centre = (x_min + x_max) / 2.0
+    y_centre = (y_min + y_max) / 2.0
+
+    point = make_wkt_point(x_centre, y_centre)
+    polygon = make_wkt_polygon(x_min, y_min, x_max, y_max)
+
+    return y_centre, x_centre, point, polygon
 
 
 def insert_row(table_name, row):
@@ -104,23 +118,32 @@ def import_label_to_postgres(image_path):
     image = get_image(image_path)
 
     # TODO: output image bounds as polygon (need to create table as well)
+    image_row = dict()
 
-    # convert labels to polygons (if file exists - could be no labels for the file)
+    # convert labels to polygons (if file exists. Could have no labels for the file)
     if os.path.isfile(image["label_file"]):
         with open(image["label_file"], "r") as file:
-            polygon = convert_label_to_polygon(image, file.readline().split(" "))
+            label_count = 0
 
-        # insert into postgres
-        row = dict()
-        row["file_path"] = image_path
-        row["geom"] = polygon
-        insert_row(target_table, row)
+            # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
+            for line in file:
+                label_row = dict()
+                label_row["file_path"] = image_path
+
+                # get label centre and polygon
+                label_row["latitude"],  label_row["longitude"],  label_row["point_geom"],  label_row["geom"] = \
+                    convert_label_to_polygon(image, line.split(" "))
+
+                # insert into postgres
+                insert_row(label_table,  label_row)
+
+                label_count += 1
 
         # print(f"Imported {os.path.basename(image_path)} labels")
-        return True
+        return label_count
     else:
         # print(f"No labels for {image_path}")
-        return False
+        return 0
 
 
 if __name__ == "__main__":
@@ -134,7 +157,7 @@ if __name__ == "__main__":
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    pg_cur.execute(f"truncate table {target_table}")
+    pg_cur.execute(f"truncate table {label_table}")
 
     # clean up postgres connection
     pg_cur.close()
@@ -156,18 +179,20 @@ if __name__ == "__main__":
 
     # check multiprocessing results
     label_count = 0
-    no_label_count = 0
-
+    label_file_count = 0
+    no_label_file_count = 0
 
     for mp_result in mp_results:
-        if mp_result:
-            label_count += 1
-        elif not mp_result:
-            no_label_count += 1
+        if mp_result > 0:
+            label_count += mp_result
+            label_file_count += 1
+        elif mp_result == 0:
+            no_label_file_count += 1
         else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
 
-    print(f"\t - {label_count} images with labels")
-    print(f"\t - {no_label_count} images with no labels")
+    print(f"\t - {label_count} labels imported")
+    print(f"\t - {label_file_count} images with labels")
+    print(f"\t - {no_label_file_count} images with no labels")
 
     print(f"FINISHED : swimming pool image & label import : {datetime.now() - start_time}")
