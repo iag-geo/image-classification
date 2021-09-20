@@ -2,7 +2,7 @@
 
 # installs drivers and Python packages to enable YOLOv5 image classification
 
-PYTHON_VERSION="3.8"   # 3.9 not yet supported by YOLOv5
+PYTHON_VERSION="3.9"
 NVIDIA_DRIVER_VERSION="460.91.03"  # CUDA 11.2  #TODO: check if YOLOv5 works with CUDA 11.2 or 10.2 only?
 
 # check if proxy server required
@@ -59,18 +59,15 @@ chmod +x Miniconda3-latest-Linux-x86_64.sh
 sh Miniconda3-latest-Linux-x86_64.sh -b
 
 # initialise Conda & reload bash environment
-~/miniconda3/bin/conda init
+${HOME}/miniconda3/bin/conda init
 source .bashrc
 
 # update
 echo "y" | conda update conda
 
 echo "-------------------------------------------------------------------------"
-echo "Creating new Conda Environment 'yolov5'"
+echo " Creating new Conda Environment 'yolov5'"
 echo "-------------------------------------------------------------------------"
-
-# update Conda platform
-echo "y" | conda update conda
 
 # WARNING - removes existing environment
 conda env remove --name yolov5
@@ -86,11 +83,8 @@ conda config --env --set channel_priority strict
 # reactivate for env vars to take effect
 conda activate yolov5
 
-# install packages
-echo "y" | conda install -c conda-forge rasterio owslib psycopg2
-
 echo "-------------------------------------------------------------------------"
-echo "Downloading and installing YOLOv5"
+echo " Downloading & installing YOLOv5"
 echo "-------------------------------------------------------------------------"
 
 git clone https://github.com/ultralytics/yolov5  # clone repo
@@ -103,6 +97,12 @@ pip3 install -r requirements.txt  # install dependencies
 #sudo mkswap /swapfile
 #sudo swapon /swapfile
 #free -h  # check memory
+
+echo "-------------------------------------------------------------------------"
+echo " Installing additional Python packages"
+echo "-------------------------------------------------------------------------"
+
+echo "y" | conda install -c conda-forge rasterio psycopg2
 
 
 # remove proxy if set
