@@ -18,14 +18,75 @@ search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
 label_table = "data_science.swimming_pool_labels"
 image_table = "data_science.swimming_pool_images"
 
-# NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
-wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer"
-
-# create postgres connect string
-pg_connect_string = "dbname=geo host=localhost port=5432 user=postgres password=password"
-
 # create postgres connection pool
+pg_connect_string = "dbname=geo host=localhost port=5432 user=postgres password=password"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
+
+
+def main():
+    start_time = datetime.now()
+
+    print(f"START : swimming pool image & label import : {datetime.now()}")
+
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # clean out target tables
+    pg_cur.execute(f"truncate table {label_table}")
+    pg_cur.execute(f"truncate table {image_table}")
+
+    # get list of image paths and process them using multiprocessing
+    file_list = list()
+    image_count = 0
+    for file_name in glob.glob(search_path):
+        file_list.append(file_name)
+        image_count += 1
+
+    print(f"\t - {image_count} images to import")
+
+    mp_pool = multiprocessing.Pool(cpu_count)
+    mp_results = mp_pool.imap_unordered(import_label_to_postgres, file_list)
+    mp_pool.close()
+    mp_pool.join()
+
+    # check multiprocessing results
+    total_label_count = 0
+    label_file_count = 0
+    no_label_file_count = 0
+
+    for mp_result in mp_results:
+        if mp_result > 0:
+            total_label_count += mp_result
+            label_file_count += 1
+        elif mp_result == 0:
+            no_label_file_count += 1
+        else:
+            print("WARNING: multiprocessing error : {}".format(mp_result))
+
+    # output results to screen
+    print(f"\t - {total_label_count} labels imported")
+
+    # get counts of missing parcels and addresses
+    pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
+    row = pg_cur.fetchone()
+    if row is not None:
+        print(f"\t\t - {int(row[0])} missing parcel IDs")
+
+    pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
+    row = pg_cur.fetchone()
+    if row is not None:
+        print(f"\t\t - {int(row[0])} missing address IDs")
+
+    print(f"\t - {label_file_count} images with labels")
+    print(f"\t - {no_label_file_count} images with no labels")
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
+    print(f"FINISHED : swimming pool image & label import : {datetime.now() - start_time}")
 
 
 def get_image(file_path):
@@ -190,67 +251,4 @@ def import_label_to_postgres(image_path):
 
 
 if __name__ == "__main__":
-    start_time = datetime.now()
-
-    print(f"START : swimming pool image & label import : {datetime.now()}")
-
-    # clean out target tables
-
-    # get postgres connection from pool
-    pg_conn = pg_pool.getconn()
-    pg_conn.autocommit = True
-    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    pg_cur.execute(f"truncate table {label_table}")
-    pg_cur.execute(f"truncate table {image_table}")
-
-    # get list of image paths and process them using multiprocessing
-    file_list = list()
-    image_count = 0
-    for file_name in glob.glob(search_path):
-        file_list.append(file_name)
-        image_count += 1
-
-    print(f"\t - {image_count} images to import")
-
-    mp_pool = multiprocessing.Pool(cpu_count)
-    mp_results = mp_pool.imap_unordered(import_label_to_postgres, file_list)
-    mp_pool.close()
-    mp_pool.join()
-
-    # check multiprocessing results
-    total_label_count = 0
-    label_file_count = 0
-    no_label_file_count = 0
-
-    for mp_result in mp_results:
-        if mp_result > 0:
-            total_label_count += mp_result
-            label_file_count += 1
-        elif mp_result == 0:
-            no_label_file_count += 1
-        else:
-            print("WARNING: multiprocessing error : {}".format(mp_result))
-
-    # output results to screen
-    print(f"\t - {total_label_count} labels imported")
-
-    # get counts of missing parcels and addresses
-    pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
-    row = pg_cur.fetchone()
-    if row is not None:
-        print(f"\t\t - {int(row[0])} missing parcel IDs")
-
-    pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
-    row = pg_cur.fetchone()
-    if row is not None:
-        print(f"\t\t - {int(row[0])} missing address IDs")
-
-    print(f"\t - {label_file_count} images with labels")
-    print(f"\t - {no_label_file_count} images with no labels")
-
-    # clean up postgres connection
-    pg_cur.close()
-    pg_pool.putconn(pg_conn)
-
-    print(f"FINISHED : swimming pool image & label import : {datetime.now() - start_time}")
+    main()
