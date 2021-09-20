@@ -6,6 +6,7 @@ import psycopg2
 import psycopg2.extras
 import rasterio
 
+from datetime import datetime
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
@@ -108,21 +109,25 @@ def import_label_to_postgres(image_path):
     if os.path.isfile(image["label_file"]):
         with open(image["label_file"], "r") as file:
             polygon = convert_label_to_polygon(image, file.readline().split(" "))
+
+        # insert into postgres
+        row = dict()
+        row["file_path"] = image_path
+        row["geom"] = polygon
+        insert_row(target_table, row)
+
+        # print(f"Imported {os.path.basename(image_path)} labels")
+        return True
     else:
-        print(f"No labels for {image_path}")
-        polygon = None
-
-    # insert into postgres
-    row = dict()
-    row["file_path"] = image_path
-    row["geom"] = polygon
-
-    insert_row(target_table, row)
-
-    print(f"Imported {os.path.basename(image_path)} labels")
+        # print(f"No labels for {image_path}")
+        return False
 
 
 if __name__ == "__main__":
+    start_time = datetime.now()
+
+    print(f"START : swimming pool image & label import : {datetime.now()}")
+
     # clean out target table
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -135,10 +140,14 @@ if __name__ == "__main__":
     pg_cur.close()
     pg_pool.putconn(pg_conn)
 
-    # get list of image paths
+    # get list of image paths and process them using multiprocessing
     file_list = list()
+    image_count = 0
     for file_name in glob.glob(search_path):
         file_list.append(file_name)
+        image_count += 1
+
+    print(f"\t - {image_count} images to import")
 
     mp_pool = multiprocessing.Pool(cpu_count)
     mp_results = mp_pool.imap_unordered(import_label_to_postgres, file_list)
@@ -146,6 +155,19 @@ if __name__ == "__main__":
     mp_pool.join()
 
     # check multiprocessing results
+    label_count = 0
+    no_label_count = 0
+
+
     for mp_result in mp_results:
-        if mp_result is not None:
+        if mp_result:
+            label_count += 1
+        elif not mp_result:
+            no_label_count += 1
+        else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
+
+    print(f"\t - {label_count} images with labels")
+    print(f"\t - {no_label_count} images with no labels")
+
+    print(f"FINISHED : swimming pool image & label import : {datetime.now() - start_time}")
