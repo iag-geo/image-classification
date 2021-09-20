@@ -8,7 +8,7 @@ echo "-------------------------------------------------------------------------"
 echo " Set temp local environment vars"
 echo "-------------------------------------------------------------------------"
 
-AMI_ID="ami-00764cc25c2985858"
+AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI
 #INSTANCE_TYPE="m5d.12xlarge"
 INSTANCE_TYPE="p3.2xlarge"
 #INSTANCE_TYPE="g4dn.12xlarge"
