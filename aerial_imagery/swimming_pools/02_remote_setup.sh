@@ -14,21 +14,21 @@ while getopts ":p:" opt; do
   esac
 done
 
-if [ -n "${PROXY}" ]; then
-  export no_proxy="localhost,127.0.0.1,:11";
-  export http_proxy="$PROXY";
-  export https_proxy=${http_proxy};
-  export HTTP_PROXY=${http_proxy};
-  export HTTPS_PROXY=${http_proxy};
-  export NO_PROXY=${no_proxy};
-
-  echo "-------------------------------------------------------------------------";
-  echo " Proxy set to ${http_proxy}";
-  echo "-------------------------------------------------------------------------";
-fi
+#if [ -n "${PROXY}" ]; then
+#  export no_proxy="localhost,127.0.0.1,:11";
+#  export http_proxy="$PROXY";
+#  export https_proxy=${http_proxy};
+#  export HTTP_PROXY=${http_proxy};
+#  export HTTPS_PROXY=${http_proxy};
+#  export NO_PROXY=${no_proxy};
+#
+#  echo "-------------------------------------------------------------------------";
+#  echo " Proxy set to ${http_proxy}";
+#  echo "-------------------------------------------------------------------------";
+#fi
 
 echo "-------------------------------------------------------------------------"
-echo " Install git & kernel packages"
+echo " Installing git & kernel packages"
 echo "-------------------------------------------------------------------------"
 
 sudo yum -y install git kernel-devel-$(uname -r) kernel-headers-$(uname -r)
@@ -91,7 +91,7 @@ git clone https://github.com/ultralytics/yolov5  # clone repo
 cd yolov5
 pip3 install -r requirements.txt  # install dependencies
 
-## create an in memory swapfile (if peformance isues)
+## create an in memory swapfile (if peformance issues)
 #sudo fallocate -l 64G /swapfile
 #sudo chmod 600 /swapfile
 #sudo mkswap /swapfile
@@ -102,18 +102,18 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2
+echo "y" | conda install -c conda-forge rasterio psycopg2 s3fs
 
 
-# remove proxy if set
-if [ -n "${PROXY}" ]; then
-  unset http_proxy
-  unset HTTP_PROXY
-  unset https_proxy
-  unset HTTPS_PROXY
-  unset no_proxy
-  unset NO_PROXY
-
-  git config --global --unset http.https://github.com.proxy
-  git config --global --unset http.https://github.com.sslVerify
-fi
+## remove proxy if set
+#if [ -n "${PROXY}" ]; then
+#  unset http_proxy
+#  unset HTTP_PROXY
+#  unset https_proxy
+#  unset HTTPS_PROXY
+#  unset no_proxy
+#  unset NO_PROXY
+#
+#  git config --global --unset http.https://github.com.proxy
+#  git config --global --unset http.https://github.com.sslVerify
+#fi

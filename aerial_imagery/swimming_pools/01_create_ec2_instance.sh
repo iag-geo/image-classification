@@ -105,6 +105,20 @@ scp -F ${SSH_CONFIG} -r ${HOME}/.aws/credentials ${USER}@${INSTANCE_ID}:~/.aws/c
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/02_remote_setup.sh ${USER}@${INSTANCE_ID}:~/
 
 if [ -n "${PROXY}" ]; then
+  # set proxy permanently if required
+  ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} \
+  'cat << EOF > ~/environment
+  no_proxy="169.254.169.254,localhost,127.0.0.1,:11"
+  http_proxy="http://nonprod-proxy.csg.iagcloud.net:8080"
+  https_proxy="http://nonprod-proxy.csg.iagcloud.net:8080"
+  proxy="http://nonprod-proxy.csg.iagcloud.net:8080"
+  HTTP_PROXY="http://nonprod-proxy.csg.iagcloud.net:8080"
+  HTTPS_PROXY="http://nonprod-proxy.csg.iagcloud.net:8080"
+  PROXY="http://nonprod-proxy.csg.iagcloud.net:8080"
+  NO_PROXY="169.254.169.254,localhost,127.0.0.1,:11"
+  EOF'
+  ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sudo cp ~/environment /etc/environment"
+
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh -p ${PROXY}"
 else
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh"
