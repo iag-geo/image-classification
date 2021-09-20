@@ -1,10 +1,11 @@
 
+-- add postgis to database
+create extension if not exists postgis;
+
 -- create schema and index on GNAF (gnaf-loader doesn't add it)
 create schema if not exists data_science;
 alter schema data_science owner to postgres;
 
--- takes 9 mins
-CREATE INDEX IF NOT EXISTS address_principals_legal_parcel_id_idx ON gnaf_202108.address_principals USING btree (legal_parcel_id);
 
 -- create image and label tables
 
@@ -14,6 +15,7 @@ create table data_science.swimming_pool_labels (
     label_type text NOT NULL,
     legal_parcel_id text,
     gnaf_pid text,
+    address text,
     latitude numeric(8,6) NOT NULL,
     longitude numeric(9,6) NOT NULL,
     point_geom geometry(Point, 4283) NOT NULL,
@@ -40,20 +42,3 @@ alter table data_science.swimming_pool_images owner to postgres;
 ALTER TABLE data_science.swimming_pool_images ADD CONSTRAINT swimming_pool_images_pkey PRIMARY KEY (file_path);
 CREATE INDEX swimming_pool_images_geom_idx ON data_science.swimming_pool_images USING gist (geom);
 ALTER TABLE data_science.swimming_pool_images CLUSTER ON swimming_pool_images_geom_idx;
-
-
-
--- select count(*) from data_science.swimming_pool_labels;
-
-
-select *
-from geo_propertyloc.aus_cadastre_boundaries
-where st_intersects(st_setsrid(st_makepoint(151.13, -33.84), 4283), geom)
-;
-
-select legal_parcel_id from gnaf_202108.address_principals
--- where state = 'NSW'
-where legal_parcel_id like '%DP944236'
-;
-
-2/226248

@@ -101,6 +101,7 @@ def convert_label_to_polygon(image, label):
 def get_parcel_and_address_ids(latitude, longitude):
     legal_parcel_id = None
     gnaf_pid = None
+    address = None
 
     # # Get parcel ID from NSW DCS WMS service (intermittent performance - service barely running as of 20210920)
     # wms = WebMapService(wms_base_url)
@@ -138,32 +139,31 @@ def get_parcel_and_address_ids(latitude, longitude):
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # STEP 1 - get legal parcel ID
-    sql = f"""select jurisdiction_id
-              from geo_propertyloc.aus_cadastre_boundaries
-              where st_intersects(st_setsrid(st_makepoint({longitude}, {latitude}), 4283), geom)"""
+    # get legal parcel ID and address ID using spatial join (joining on legal parcel ID is flaky due to GNAF's approach)
+    sql = f"""select cad.jurisdiction_id, 
+                     gnaf.gnaf_pid, 
+                     concat(gnaf.address, ', ', gnaf.locality_name, ' ', gnaf.state, ' ', gnaf.postcode) as address
+              from geo_propertyloc.aus_cadastre_boundaries as cad
+              inner join gnaf_202108.address_principals as gnaf on st_intersects(gnaf.geom, cad.geom)
+              where st_intersects(st_setsrid(st_makepoint({longitude}, {latitude}), 4283), cad.geom)
+                and coalesce(gnaf.primary_secondary, 'P') = 'P'"""
     pg_cur.execute(sql)
+
+    # TODO: import all the results. Can return multiple addresses due to strata titles & the specifics of land titling
     row = pg_cur.fetchone()
 
     if row is not None:
-        legal_parcel_id = row[0].replace("//", "/")
-
-        # STEP 2 - get address using legal parcel ID
-        sql = f"""select gnaf_pid
-                  from gnaf_202108.address_principals
-                  where legal_parcel_id = '{legal_parcel_id}'"""
-        pg_cur.execute(sql)
-        row = pg_cur.fetchone()
-        if row is not None:
-            gnaf_pid = row[0]
+        legal_parcel_id = row[0]
+        gnaf_pid = row[1]
+        address = row[2]
 
     # clean up postgres connection
     pg_cur.close()
     pg_pool.putconn(pg_conn)
 
-    print(f"{legal_parcel_id} : {gnaf_pid}")
+    # print(f"{legal_parcel_id} : {gnaf_pid}")
 
-    return legal_parcel_id, gnaf_pid
+    return legal_parcel_id, gnaf_pid, address
 
 
 def insert_row(table_name, row):
@@ -206,7 +206,7 @@ def import_label_to_postgres(image_path):
                     convert_label_to_polygon(image, line.split(" "))
 
                 # get legal parcel identifier & address ID (gnaf_pid)
-                label_row["legal_parcel_id"], label_row["gnaf_pid"] = \
+                label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
                     get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
 
                 # insert into postgres
@@ -239,10 +239,6 @@ if __name__ == "__main__":
     pg_cur.execute(f"truncate table {label_table}")
     pg_cur.execute(f"truncate table {image_table}")
 
-    # clean up postgres connection
-    pg_cur.close()
-    pg_pool.putconn(pg_conn)
-
     # get list of image paths and process them using multiprocessing
     file_list = list()
     image_count = 0
@@ -271,8 +267,25 @@ if __name__ == "__main__":
         else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
 
+    # output results to screen
     print(f"\t - {total_label_count} labels imported")
+
+    # get counts of missing parcels and addresses
+    pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
+    row = pg_cur.fetchone()
+    if row is not None:
+        print(f"\t\t - {int(row[0])} missing parcel IDs")
+
+    pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
+    row = pg_cur.fetchone()
+    if row is not None:
+        print(f"\t\t - {int(row[0])} missing address IDs")
+
     print(f"\t - {label_file_count} images with labels")
     print(f"\t - {no_label_file_count} images with no labels")
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
 
     print(f"FINISHED : swimming pool image & label import : {datetime.now() - start_time}")
