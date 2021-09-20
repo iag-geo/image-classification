@@ -14,22 +14,31 @@ while getopts ":p:" opt; do
   esac
 done
 
-if [ -n "${PROXY}" ];
-  then
-    export no_proxy="localhost,127.0.0.1,:11";
-    export http_proxy="$PROXY";
-    export https_proxy=${http_proxy};
-    export HTTP_PROXY=${http_proxy};
-    export HTTPS_PROXY=${http_proxy};
-    export NO_PROXY=${no_proxy};
+if [ -n "${PROXY}" ]; then
+  export no_proxy="localhost,127.0.0.1,:11";
+  export http_proxy="$PROXY";
+  export https_proxy=${http_proxy};
+  export HTTP_PROXY=${http_proxy};
+  export HTTPS_PROXY=${http_proxy};
+  export NO_PROXY=${no_proxy};
 
-	  git config --global http.https://github.com.proxy ${http_proxy}
-	  git config --global http.https://github.com.sslVerify false
-
-    echo "-------------------------------------------------------------------------";
-    echo " Proxy set to ${http_proxy}";
-    echo "-------------------------------------------------------------------------";
+  echo "-------------------------------------------------------------------------";
+  echo " Proxy set to ${http_proxy}";
+  echo "-------------------------------------------------------------------------";
 fi
+
+echo "-------------------------------------------------------------------------"
+echo " Install kernel packages"
+echo "-------------------------------------------------------------------------"
+
+sudo yum -y install kernel-devel-$(uname -r) kernel-headers-$(uname -r)
+
+# set git proxy
+if [ -n "${PROXY}" ]; then
+  git config --global http.https://github.com.proxy ${http_proxy}
+  git config --global http.https://github.com.sslVerify false
+fi
+
 
 echo "-------------------------------------------------------------------------"
 echo " Installing NVIDIA drivers"
@@ -98,15 +107,14 @@ pip3 install -r requirements.txt  # install dependencies
 
 
 # remove proxy if set
-if [ -n "${PROXY}" ];
-  then
-    unset http_proxy
-    unset HTTP_PROXY
-    unset https_proxy
-    unset HTTPS_PROXY
-    unset no_proxy
-    unset NO_PROXY
+if [ -n "${PROXY}" ]; then
+  unset http_proxy
+  unset HTTP_PROXY
+  unset https_proxy
+  unset HTTPS_PROXY
+  unset no_proxy
+  unset NO_PROXY
 
-    git config --global --unset http.https://github.com.proxy
-    git config --global --unset http.https://github.com.sslVerify
+  git config --global --unset http.https://github.com.proxy
+  git config --global --unset http.https://github.com.sslVerify
 fi

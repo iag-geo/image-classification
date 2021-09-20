@@ -2,6 +2,15 @@
 
 SECONDS=0*
 
+# check if proxy server required
+while getopts ":p:" opt; do
+  case $opt in
+  p)
+    PROXY=$OPTARG
+    ;;
+  esac
+done
+
 echo "-------------------------------------------------------------------------"
 echo " Start time : $(date)"
 echo "-------------------------------------------------------------------------"
@@ -10,8 +19,8 @@ echo "-------------------------------------------------------------------------"
 
 AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI
 #INSTANCE_TYPE="m5d.12xlarge"
-INSTANCE_TYPE="p3.2xlarge"
-#INSTANCE_TYPE="g4dn.12xlarge"
+#INSTANCE_TYPE="p3.2xlarge"  # not available to me but should be faster
+INSTANCE_TYPE="g4dn.12xlarge"
 
 USER="ec2-user"
 
@@ -94,7 +103,12 @@ scp -F ${SSH_CONFIG} -r ${HOME}/.aws/credentials ${USER}@${INSTANCE_ID}:~/.aws/c
 
 # setup OS and pre-reqs
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/02_remote_setup.sh ${USER}@${INSTANCE_ID}:~/
-ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh"
+
+if [ -n "${PROXY}" ]; then
+  ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh -p ${PROXY}"
+else
+  ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh"
+fi
 
 #echo "-------------------------------------------------------------------------"
 #echo " Port forward something if needed"
