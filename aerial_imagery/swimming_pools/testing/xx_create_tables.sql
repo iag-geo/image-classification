@@ -2,10 +2,9 @@
 -- add postgis to database
 create extension if not exists postgis;
 
--- create schema and index on GNAF (gnaf-loader doesn't add it)
+-- create schema
 create schema if not exists data_science;
 alter schema data_science owner to postgres;
-
 
 -- create image and label tables
 
@@ -24,7 +23,7 @@ create table data_science.swimming_pool_labels (
 
 alter table data_science.swimming_pool_labels owner to postgres;
 
--- TODO: move these to after data import if this has to scale
+-- TODO: move these to after data import if this needs to scale
 CREATE INDEX swimming_pool_labels_file_path_idx ON data_science.swimming_pool_labels USING btree (file_path);
 CREATE INDEX swimming_pool_labels_point_geom_idx ON data_science.swimming_pool_labels USING gist (point_geom);
 CREATE INDEX swimming_pool_labels_geom_idx ON data_science.swimming_pool_labels USING gist (geom);
@@ -38,7 +37,7 @@ create table data_science.swimming_pool_images (
 );
 alter table data_science.swimming_pool_images owner to postgres;
 
--- TODO: move these to after data import if this has to scale
+-- TODO: move these to after data import if this needs to scale
 ALTER TABLE data_science.swimming_pool_images ADD CONSTRAINT swimming_pool_images_pkey PRIMARY KEY (file_path);
 CREATE INDEX swimming_pool_images_geom_idx ON data_science.swimming_pool_images USING gist (geom);
 ALTER TABLE data_science.swimming_pool_images CLUSTER ON swimming_pool_images_geom_idx;
