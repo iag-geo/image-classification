@@ -56,7 +56,7 @@ def get_image(file_path):
     return output
 
 
-def convert_to_polygon(image, label):
+def convert_label_to_polygon(image, label):
     # format of label files is:
     #   0: unknown (always 0 in my data sample)
     #   1: percentage distance from leftmost pixel
@@ -64,40 +64,32 @@ def convert_to_polygon(image, label):
     #   3: percentage width
     #   4: percentage height
 
-    # convert percentages to coordinates
-    x_min = image["x_min"] + image["x_width"] * float(label[1])
-    y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]))
-    x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]))
-    y_max = image["y_max"] - image["y_height"] * float(label[2])
+    # # TODO: convert percentages to coordinates -- appears to put polygon offset by 1/2 width and height
+    # #  (bug in my code or misinterpretation of training labels?)
+    # x_min = image["x_min"] + image["x_width"] * float(label[1])
+    # y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]))
+    # x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]))
+    # y_max = image["y_max"] - image["y_height"] * float(label[2])
+
+    x_min = image["x_min"] + image["x_width"] * (float(label[1]) - float(label[3]) / 2.0)
+    y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]) / 2.0)
+    x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]) / 2.0)
+    y_max = image["y_max"] - image["y_height"] * (float(label[2]) - float(label[4]) / 2.0)
 
     return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
 
 
-def import_label_to_postgres(image_path):
-    # open image file
-    image = get_image(image_path)
-
-    # convert labels to polygons (if file exists - could be no labels for the file)
-    if os.path.isfile(image["label_file"]):
-        with open(image["label_file"], "r") as file:
-            polygon = convert_to_polygon(image, file.readline().split(" "))
-    else:
-        print(f"No labels for {image_path}")
-        polygon = None
-
+def insert_row(table_name, row):
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    row = dict()
-    row["file_path"] = image_path
-    row["geom"] = polygon
-
+    # get column names & values (dict keys must match existing table structure)
     columns = list(row.keys())
     values = [row[column] for column in columns]
 
-    insert_statement = f"INSERT INTO {target_table} (%s) VALUES %s"
+    insert_statement = f"INSERT INTO {table_name} (%s) VALUES %s"
     sql = pg_cur.mogrify(insert_statement, (AsIs(','.join(columns)), tuple(values))).decode("utf-8")
     pg_cur.execute(sql)
 
@@ -105,10 +97,44 @@ def import_label_to_postgres(image_path):
     pg_cur.close()
     pg_pool.putconn(pg_conn)
 
+
+def import_label_to_postgres(image_path):
+    # open image file
+    image = get_image(image_path)
+
+    # TODO: output image bounds as polygon (need to create table as well)
+
+    # convert labels to polygons (if file exists - could be no labels for the file)
+    if os.path.isfile(image["label_file"]):
+        with open(image["label_file"], "r") as file:
+            polygon = convert_label_to_polygon(image, file.readline().split(" "))
+    else:
+        print(f"No labels for {image_path}")
+        polygon = None
+
+    # insert into postgres
+    row = dict()
+    row["file_path"] = image_path
+    row["geom"] = polygon
+
+    insert_row(target_table, row)
+
     print(f"Imported {os.path.basename(image_path)} labels")
 
 
 if __name__ == "__main__":
+    # clean out target table
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    pg_cur.execute(f"truncate table {target_table}")
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
     # get list of image paths
     file_list = list()
     for file_name in glob.glob(search_path):
