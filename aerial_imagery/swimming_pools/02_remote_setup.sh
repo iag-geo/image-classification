@@ -18,6 +18,9 @@ if [ -n "${PROXY}" ];
     export HTTPS_PROXY=${http_proxy};
     export NO_PROXY=${no_proxy};
 
+	  git config --global http.https://github.com.proxy ${http_proxy}
+	  git config --global http.https://github.com.sslVerify false
+
     echo "-------------------------------------------------------------------------";
     echo " Proxy set to ${http_proxy}";
     echo "-------------------------------------------------------------------------";
@@ -41,6 +44,9 @@ if [ -n "${PROXY}" ];
     unset HTTPS_PROXY
     unset no_proxy
     unset NO_PROXY
+
+    git config --global --unset http.https://github.com.proxy
+    git config --global --unset http.https://github.com.sslVerify
 fi
 
 
