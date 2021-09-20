@@ -9,6 +9,7 @@ import rasterio
 from datetime import datetime
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
+from owslib.wms import WebMapService
 
 # how many parallel processes to run
 cpu_count = 4
@@ -17,6 +18,9 @@ cpu_count = 4
 search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
 label_table = "data_science.swimming_pool_labels"
 image_table = "data_science.swimming_pool_images"
+
+# NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
+wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer"
 
 # create postgres connect string
 pg_connect_string = "dbname=geo host=localhost port=5432 user=postgres password=password"
@@ -94,6 +98,74 @@ def convert_label_to_polygon(image, label):
     return y_centre, x_centre, point, polygon
 
 
+def get_parcel_and_address_ids(latitude, longitude):
+    legal_parcel_id = None
+    gnaf_pid = None
+
+    # # Get parcel ID from NSW DCS WMS service (intermittent performance - service barely running as of 20210920)
+    # wms = WebMapService(wms_base_url)
+    #
+    # try:
+    #     response = wms.getfeatureinfo(
+    #         layers=["1"],
+    #         srs='EPSG:4326',
+    #         bbox=(longitude - 0.000001, latitude - 0.000001, longitude + 0.000001, latitude + 0.000001),
+    #         query_layers=["1"],
+    #         info_format="application/json",  # JSON output not working on this server - thanks ESRI!
+    #         feature_count=1,
+    #         method='GET',
+    #         size=(2,2),
+    #         xy=(1,1)
+    #         )
+    #
+    #     # output is ugly, old XML, this is a hack to just get what we want
+    #     # b'<?xml version="1.0" encoding="UTF-8"?>\n\r\n<FeatureInfoResponse xmlns:esri_wms="http://www.esri.com/wms" xmlns="http://www.esri.com/wms">\r\n<FIELDS OBJECTID="1712612" Shape="Polygon" cadid="102901598" createdate="8/09/1993" modifieddate="8/09/1993" controllingauthorityoid="2" planoid="19032" plannumber="7796" planlabel="DP7796" ITSTitleStatus="ITSTitle" itslotid="598507" StratumLevel="Ground Level" HasStratum="False" ClassSubtype="StandardLot" lotnumber="32" sectionnumber="Null" planlotarea="Null" planlotareaunits="Null" startdate="26/11/2004 7:43:44 PM" enddate="1/01/3000" lastupdate="26/11/2004 7:43:44 PM" msoid="208734" centroidid="Null" shapeuuid="ac568fff-56c7-3150-9d4b-2ece31d365c2" changetype="I" lotidstring="32//DP7796" processstate="Null" urbanity="U" shape_Length="163.283866" shape_Area="1245.718807"></FIELDS>\r\n</FeatureInfoResponse>\r\n'
+    #     response_text = response.read().decode("utf-8")
+    #     response_list = response_text.split(" ")
+    #     for element in response_list:
+    #         if "lotidstring=" in element:
+    #             legal_parcel_id = element.replace("lotidstring=","").replace('"', '')
+    #
+    #     print(f"legal_parcel_id : {legal_parcel_id}")
+    # except:
+    #     # probably timed out
+    #     print(f"NSW DCS WMS timed out for label at {latitude}, {longitude} ")
+
+    # get data using PostGIS (was hoping to avoid this as the Cadastre is 11Gb, slowing EC2/RDS build time)
+
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # STEP 1 - get legal parcel ID
+    sql = f"""select jurisdiction_id
+              from geo_propertyloc.aus_cadastre_boundaries
+              where st_intersects(st_setsrid(st_makepoint({longitude}, {latitude}), 4283), geom)"""
+    pg_cur.execute(sql)
+    row = pg_cur.fetchone()
+
+    if row is not None:
+        legal_parcel_id = row[0].replace("//", "/")
+
+        # STEP 2 - get address using legal parcel ID
+        sql = f"""select gnaf_pid
+                  from gnaf_202108.address_principals
+                  where legal_parcel_id = '{legal_parcel_id}'"""
+        pg_cur.execute(sql)
+        row = pg_cur.fetchone()
+        if row is not None:
+            gnaf_pid = row[0]
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
+    print(f"{legal_parcel_id} : {gnaf_pid}")
+
+    return legal_parcel_id, gnaf_pid
+
+
 def insert_row(table_name, row):
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -130,8 +202,12 @@ def import_label_to_postgres(image_path):
                 label_row["label_type"] = "training"
 
                 # get label centre and polygon
-                label_row["latitude"],  label_row["longitude"],  label_row["point_geom"],  label_row["geom"] = \
+                label_row["latitude"], label_row["longitude"], label_row["point_geom"], label_row["geom"] = \
                     convert_label_to_polygon(image, line.split(" "))
+
+                # get legal parcel identifier & address ID (gnaf_pid)
+                label_row["legal_parcel_id"], label_row["gnaf_pid"] = \
+                    get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
 
                 # insert into postgres
                 insert_row(label_table,  label_row)
@@ -182,20 +258,20 @@ if __name__ == "__main__":
     mp_pool.join()
 
     # check multiprocessing results
-    label_count = 0
+    total_label_count = 0
     label_file_count = 0
     no_label_file_count = 0
 
     for mp_result in mp_results:
         if mp_result > 0:
-            label_count += mp_result
+            total_label_count += mp_result
             label_file_count += 1
         elif mp_result == 0:
             no_label_file_count += 1
         else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
 
-    print(f"\t - {label_count} labels imported")
+    print(f"\t - {total_label_count} labels imported")
     print(f"\t - {label_file_count} images with labels")
     print(f"\t - {no_label_file_count} images with no labels")
 
