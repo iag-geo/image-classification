@@ -117,18 +117,17 @@ def import_label_to_postgres(image_path):
     # open image file
     image = get_image(image_path)
 
-    # TODO: output image bounds as polygon (need to create table as well)
-    image_row = dict()
+    # convert labels to polygons (if label file exists. Image could have no labelled features)
+    label_count = 0
 
-    # convert labels to polygons (if file exists. Could have no labels for the file)
     if os.path.isfile(image["label_file"]):
         with open(image["label_file"], "r") as file:
-            label_count = 0
 
             # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
             for line in file:
                 label_row = dict()
                 label_row["file_path"] = image_path
+                label_row["label_type"] = "training"
 
                 # get label centre and polygon
                 label_row["latitude"],  label_row["longitude"],  label_row["point_geom"],  label_row["geom"] = \
@@ -139,11 +138,14 @@ def import_label_to_postgres(image_path):
 
                 label_count += 1
 
-        # print(f"Imported {os.path.basename(image_path)} labels")
-        return label_count
-    else:
-        # print(f"No labels for {image_path}")
-        return 0
+    # import image bounds as polygons for reference
+    image_row = dict()
+    image_row["file_path"] = image_path
+    image_row["label_count"] = label_count
+    image_row["geom"] = make_wkt_polygon(image["x_min"], image["y_min"], image["x_max"], image["y_max"])
+    insert_row(image_table,  image_row)
+
+    return label_count
 
 
 if __name__ == "__main__":
@@ -151,13 +153,15 @@ if __name__ == "__main__":
 
     print(f"START : swimming pool image & label import : {datetime.now()}")
 
-    # clean out target table
+    # clean out target tables
+
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     pg_cur.execute(f"truncate table {label_table}")
+    pg_cur.execute(f"truncate table {image_table}")
 
     # clean up postgres connection
     pg_cur.close()
