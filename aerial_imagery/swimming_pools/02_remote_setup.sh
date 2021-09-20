@@ -28,17 +28,16 @@ if [ -n "${PROXY}" ]; then
 fi
 
 echo "-------------------------------------------------------------------------"
-echo " Install kernel packages"
+echo " Install git & kernel packages"
 echo "-------------------------------------------------------------------------"
 
-sudo yum -y install kernel-devel-$(uname -r) kernel-headers-$(uname -r)
+sudo yum -y install git kernel-devel-$(uname -r) kernel-headers-$(uname -r)
 
 # set git proxy
 if [ -n "${PROXY}" ]; then
   git config --global http.https://github.com.proxy ${http_proxy}
   git config --global http.https://github.com.sslVerify false
 fi
-
 
 echo "-------------------------------------------------------------------------"
 echo " Installing NVIDIA drivers"
