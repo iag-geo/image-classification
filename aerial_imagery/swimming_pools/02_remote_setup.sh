@@ -122,7 +122,8 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2 postgis wandb
+echo "y" | conda install -c conda-forge rasterio psycopg2 postgis
+#wandb
 
 echo "-------------------------------------------------------------------------"
 echo " Copy data from S3"
@@ -163,6 +164,17 @@ echo " Import training data into Postgres (for reference)"
 echo "-------------------------------------------------------------------------"
 
 python3 ${HOME}/04_load_training_data_to_postgres.py
+
+echo "-------------------------------------------------------------------------"
+echo " Run model training (~25 mins) or copy existing model from S3"
+echo "-------------------------------------------------------------------------"
+
+# run training & copy model to S3
+#python3 ~/yolov5/train.py --data ~/pool.yaml
+#aws s3 cp ~/yolov5/runs/train/exp/ s3://image-classification-swimming-pools/model/ --recursive
+
+# copy previous model from S3
+aws s3 cp s3://image-classification-swimming-pools/model/ ~/yolov5/runs/train/exp/ --recursive
 
 
 ## remove proxy if set
