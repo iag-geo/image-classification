@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Script builds a single EC2 instance with YOLOv5 and Postgres/PostGIS installed
+# Also copies training and reference datacfrom S3 and imports it into Postgres
+# Takes <10 min to run
+
 SECONDS=0*
 
 # check if proxy server required
