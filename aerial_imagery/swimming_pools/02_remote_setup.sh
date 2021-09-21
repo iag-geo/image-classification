@@ -129,7 +129,7 @@ echo " Copy data from S3"
 echo "-------------------------------------------------------------------------"
 
 aws s3 sync s3://image-classification-swimming-pools/training/swimming-pools/ ${HOME}/training_data
-aws s3 cp s3://image-classification-swimming-pools/geoscape/gnaf-cad.dmp ${HOME}/gnaf-cad.dmp
+aws s3 cp s3://image-classification-swimming-pools/geoscape/gnaf-cad.dmp ${HOME}
 
 echo "-------------------------------------------------------------------------"
 echo " Setup Postgres Database"
@@ -141,7 +141,7 @@ createdb --owner=ec2-user geo
 # add PostGIS, create schema and tables
 psql -d geo -f ${HOME}/03_create_tables.sql
 
-# restore GNAF & Cad tables
+# restore GNAF & Cad tables (ignore the 2 ALTER TABLE errors)
 pg_restore -Fc -d geo -p 5432 -U ec2-user ${HOME}/gnaf-cad.dmp
 
 

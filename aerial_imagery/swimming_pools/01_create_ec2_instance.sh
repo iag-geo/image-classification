@@ -94,20 +94,19 @@ done
 #ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sudo cp /dev/null /etc/motd"
 
 echo "-------------------------------------------------------------------------"
-echo " Copy AWS credentials and run remote script"
+echo " Copy AWS credentials & supporting files and run remote script"
 echo "-------------------------------------------------------------------------"
 
 # copy AWS creds to access S3 (if required)
 ssh -F ${SSH_CONFIG} -o StrictHostKeyChecking=no ${INSTANCE_ID} 'mkdir ~/.aws'
 scp -F ${SSH_CONFIG} -r ${HOME}/.aws/credentials ${USER}@${INSTANCE_ID}:~/.aws/credentials
 
-# setup OS and pre-reqs
+# copy required files
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/02_remote_setup.sh ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/03_create_tables.sql ${USER}@${INSTANCE_ID}:~/
+scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/04_load_training_data_to_postgres.py ${USER}@${INSTANCE_ID}:~/
 
-
-
-
+# install packages & environment and import data
 if [ -n "${PROXY}" ]; then
   # set proxy permanently if required
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} \
