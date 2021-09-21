@@ -14,6 +14,7 @@ from psycopg2.extensions import AsIs
 cpu_count = int(multiprocessing.cpu_count() * 0.8)
 
 # input and output path/table
+# search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
 search_path = "/home/ec2-user/training-data/images/*.tif"
 label_table = "data_science.swimming_pool_labels"
 image_table = "data_science.swimming_pool_images"
@@ -23,6 +24,7 @@ gnaf_table = "data_science.address_principals_nsw"
 cad_table = "data_science.aus_cadastre_boundaries_nsw"
 
 # create postgres connection pool
+# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
 pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
