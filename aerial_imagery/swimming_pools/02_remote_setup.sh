@@ -122,7 +122,7 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2 postgis
+echo "y" | conda install -c conda-forge rasterio psycopg2 postgis wandb
 
 echo "-------------------------------------------------------------------------"
 echo " Copy data from S3"
@@ -130,11 +130,11 @@ echo "-------------------------------------------------------------------------"
 
 # training data has to be copied into specific structure for YOLOv5 (TODO: is this comment correct?)
 # images
-aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640/ ${HOME}/training-data/images --exclude "*" --include "*.tif" --recursive --no-progress --quiet
-aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19/ ${HOME}/training-data/images --exclude "*" --include "*.tif" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640/ ${HOME}/datasets/pool/images/train2017 --exclude "*" --include "*.tif" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19/ ${HOME}/datasets/pool/images/train2017 --exclude "*" --include "*.tif" --recursive --no-progress --quiet
 # labels
-aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640_labels/ ${HOME}/training-data/labels --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
-aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19_labels/ ${HOME}/training-data/labels --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640_labels/ ${HOME}/datasets/pool/labels/train2017 --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19_labels/ ${HOME}/datasets/pool/labels/train2017 --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
 echo "Training data copied"
 
 # GNAF & property boundary tables
