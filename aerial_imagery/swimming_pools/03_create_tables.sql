@@ -4,7 +4,7 @@ create extension if not exists postgis;
 
 -- create schema
 create schema if not exists data_science;
-alter schema data_science owner to postgres;
+alter schema data_science owner to "ec2-user";
 
 -- create image and label tables
 
@@ -21,7 +21,7 @@ create table data_science.swimming_pool_labels (
     geom geometry(Polygon, 4283) NOT NULL
 );
 
-alter table data_science.swimming_pool_labels owner to postgres;
+alter table data_science.swimming_pool_labels owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 CREATE INDEX swimming_pool_labels_file_path_idx ON data_science.swimming_pool_labels USING btree (file_path);
@@ -35,7 +35,7 @@ create table data_science.swimming_pool_images (
     label_count smallint NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
 );
-alter table data_science.swimming_pool_images owner to postgres;
+alter table data_science.swimming_pool_images owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 ALTER TABLE data_science.swimming_pool_images ADD CONSTRAINT swimming_pool_images_pkey PRIMARY KEY (file_path);

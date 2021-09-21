@@ -3,7 +3,8 @@
 # installs drivers and Python packages to enable YOLOv5 image classification
 
 PYTHON_VERSION="3.9"
-NVIDIA_DRIVER_VERSION="460.91.03"  # CUDA 11.2  #TODO: check if YOLOv5 works with CUDA 11.2 or 10.2 only?
+#NVIDIA_DRIVER_VERSION="460.91.03"  # CUDA 11.2  #TODO: check if YOLOv5 works with CUDA 11.2 or 10.2 only?
+NVIDIA_DRIVER_VERSION="470.57.02"  # CUDA 11.4
 
 # check if proxy server required
 while getopts ":p:" opt; do
@@ -49,6 +50,25 @@ chmod u+x ~/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run
 sudo sh ~/NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run -s > nvidia_driver_install.log
 rm NVIDIA-Linux-x86_64-${NVIDIA_DRIVER_VERSION}.run
 
+## Python 3.8+ required for YOLOv5 - no package in YUM on Amazon Linux - build process below stuffs up pip3
+#echo "-------------------------------------------------------------------------"
+#echo " Installing Python ${PYTHON_VERSION}"
+#echo "-------------------------------------------------------------------------"
+#
+#sudo yum install openssl-devel
+#
+#wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python${PYTHON_VERSION}.tgz
+#tar zxvf Python-${PYTHON_VERSION}.tgz
+#cd Python-${PYTHON_VERSION}
+#./configure --prefix=/opt/python3
+#make
+#sudo make install
+#sudo rm /usr/bin/python3
+#sudo ln -s /opt/python3/bin/python3 /usr/bin/python3
+#cd ${HOME}
+#rm Python-${PYTHON_VERSION}.tgz
+
+# using Conda just to get a python 3.8+ environment
 echo "-------------------------------------------------------------------------"
 echo " Installing Conda"
 echo "-------------------------------------------------------------------------"
@@ -60,7 +80,7 @@ sh Miniconda3-latest-Linux-x86_64.sh -b
 
 # initialise Conda & reload bash environment
 ${HOME}/miniconda3/bin/conda init
-source .bashrc
+source ${HOME}/.bashrc
 
 # update
 echo "y" | conda update conda
@@ -91,7 +111,7 @@ git clone https://github.com/ultralytics/yolov5  # clone repo
 cd yolov5
 pip3 install -r requirements.txt  # install dependencies
 
-## create an in memory swapfile (if peformance issues)
+## create an in memory swapfile (if using a large dataset)
 #sudo fallocate -l 64G /swapfile
 #sudo chmod 600 /swapfile
 #sudo mkswap /swapfile
@@ -102,7 +122,17 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2 s3fs
+echo "y" | conda install -c conda-forge rasterio psycopg2 postgis s3fs
+
+echo "-------------------------------------------------------------------------"
+echo " Setup Postgres Database"
+echo "-------------------------------------------------------------------------"
+
+# new database
+createdb --owner=ec2-user geo
+
+# add PostGIS, create schema and tables
+psql -d geo -f ${HOME}/03_create_tables.sql
 
 
 ## remove proxy if set
