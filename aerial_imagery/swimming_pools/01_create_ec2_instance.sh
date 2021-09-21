@@ -112,17 +112,14 @@ if [ -n "${PROXY}" ]; then
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} \
   'cat << EOF > ~/environment
   no_proxy="169.254.169.254,localhost,127.0.0.1,:11"
-  http_proxy="${PROXY}"
-  https_proxy="${PROXY}"
-  proxy="${PROXY}"
-  HTTP_PROXY="${PROXY}"
-  HTTPS_PROXY="${PROXY}"
-  PROXY="${PROXY}"
+  http_proxy="'"${PROXY}"'"
+  https_proxy="'"${PROXY}"'"
+  proxy="'"${PROXY}"'"
+  HTTP_PROXY="'"${PROXY}"'"
+  HTTPS_PROXY="'"${PROXY}"'"
+  PROXY="'"${PROXY}"'"
   NO_PROXY="169.254.169.254,localhost,127.0.0.1,:11"
   EOF'
-
-  # TODO: probably needs on sed on the file to add the proxy - as the above var doesn't get resolved
-
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sudo cp ~/environment /etc/environment"
 
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh -p ${PROXY}"

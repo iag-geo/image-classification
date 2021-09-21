@@ -138,11 +138,17 @@ echo "-------------------------------------------------------------------------"
 # new database
 createdb --owner=ec2-user geo
 
-# add PostGIS, create schema and tables
+# add PostGIS extension to database, create schema and tables
 psql -d geo -f ${HOME}/03_create_tables.sql
 
 # restore GNAF & Cad tables (ignore the 2 ALTER TABLE errors)
 pg_restore -Fc -d geo -p 5432 -U ec2-user ${HOME}/gnaf-cad.dmp
+
+echo "-------------------------------------------------------------------------"
+echo " Import training data into Postgres (for reference)"
+echo "-------------------------------------------------------------------------"
+
+python3 04_load_training_data_to_postgres.py
 
 
 ## remove proxy if set
