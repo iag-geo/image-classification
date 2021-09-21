@@ -12,14 +12,14 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 AWS_PROFILE="default"
 OUTPUT_FOLDER="/Users/$(whoami)/tmp/image-classification"
 
-#echo "---------------------------------------------------------------------------------------------------------------------"
-#echo "create subset tables to speed up export, copy and import"
-#echo "---------------------------------------------------------------------------------------------------------------------"
-#
-#psql -d geo -f ${SCRIPT_DIR}/xx_prep_gnaf_cad_tables.sql
+echo "---------------------------------------------------------------------------------------------------------------------"
+echo "create subset tables to speed up export, copy and import"
+echo "---------------------------------------------------------------------------------------------------------------------"
+
+psql -d geo -f ${SCRIPT_DIR}/xx_prep_gnaf_cad_tables.sql
 
 echo "---------------------------------------------------------------------------------------------------------------------"
-echo "dump postgres schemas to a local folder"
+echo "dump postgres tables to a local folder"
 echo "---------------------------------------------------------------------------------------------------------------------"
 
 mkdir -p "${OUTPUT_FOLDER}"
@@ -30,7 +30,7 @@ echo "--------------------------------------------------------------------------
 echo "copy training data & Postgres dump file to AWS S3"
 echo "---------------------------------------------------------------------------------------------------------------------"
 
-aws --profile=${AWS_PROFILE} s3 sync "/Users/$(whoami)/Downloads/Swimming Pools with Labels" s3://image-classification-swimming-pools/training/
+aws --profile=${AWS_PROFILE} s3 sync "/Users/$(whoami)/Downloads/Swimming Pools with Labels" s3://image-classification-swimming-pools/training/swimming-pools/
 aws --profile=${AWS_PROFILE} s3 sync ${OUTPUT_FOLDER} s3://image-classification-swimming-pools/geoscape/ --exclude "*" --include "*.dmp"
 
 echo "-------------------------------------------------------------------------"
