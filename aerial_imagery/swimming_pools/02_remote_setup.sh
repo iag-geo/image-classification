@@ -122,7 +122,14 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2 postgis s3fs
+echo "y" | conda install -c conda-forge rasterio psycopg2 postgis
+
+echo "-------------------------------------------------------------------------"
+echo " Copy data from S3"
+echo "-------------------------------------------------------------------------"
+
+aws s3 sync s3://image-classification-swimming-pools/training/swimming-pools/ ${HOME}/training_data
+aws s3 cp s3://image-classification-swimming-pools/geoscape/gnaf-cad.dmp ${HOME}/gnaf-cad.dmp
 
 echo "-------------------------------------------------------------------------"
 echo " Setup Postgres Database"
@@ -133,6 +140,9 @@ createdb --owner=ec2-user geo
 
 # add PostGIS, create schema and tables
 psql -d geo -f ${HOME}/03_create_tables.sql
+
+# restore GNAF & Cad tables
+pg_restore -Fc -d geo -p 5432 -U ec2-user ${HOME}/gnaf-cad.dmp
 
 
 ## remove proxy if set
