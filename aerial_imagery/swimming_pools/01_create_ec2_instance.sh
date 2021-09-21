@@ -94,8 +94,9 @@ while [ ! $INSTANCE_READY ]; do
     set -e
 done
 
-## get rid of overbearing IAG welcome message - doesn't work
-#ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sudo cp /dev/null /etc/motd"
+# get rid of overbearing IAG welcome message
+ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "cat /dev/null > ~/motd && sudo cp ~/motd /etc"
+exit
 
 echo "-------------------------------------------------------------------------"
 echo " Copy AWS credentials & supporting files and run remote script"
@@ -142,6 +143,8 @@ duration=$SECONDS
 echo " End time : $(date)"
 echo " Build took $((duration / 60)) mins"
 echo "----------------------------------------------------------------------------------------------------------------"
+
+sh ~/git/temp_ec2_vars.sh
 
 
 # HANDY STUFF BELOW

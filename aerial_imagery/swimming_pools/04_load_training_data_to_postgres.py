@@ -135,12 +135,12 @@ def make_wkt_polygon(x_min, y_min, x_max, y_max):
 
 
 def convert_label_to_polygon(image, label):
-    # format of space delimited label files is:
-    #   0: unknown (always 0 in data sample)
-    #   1: centroid percentage distance from leftmost pixel
-    #   2: centroid percentage distance from topmost pixel
-    #   3: percentage width of bounding box
-    #   4: percentage height of bounding box
+    # format of YOLO label files provided is:
+    #   - class (always 0 as there's only one label in this training data: "pool")
+    #   - centroid percentage distance from leftmost pixel
+    #   - centroid percentage distance from topmost pixel
+    #   - percentage width of bounding box
+    #   - percentage height of bounding box
 
     # get lat/long bounding box
     x_min = image["x_min"] + image["x_width"] * (float(label[1]) - float(label[3]) / 2.0)
