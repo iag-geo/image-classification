@@ -1,8 +1,8 @@
 
 # run training
 conda activate yolov5
-cd yolov5
-python3 train.py --data ~/pool.yaml
+
+python3 ~/yolov5/train.py --data ~/pool.yaml
 
 # training takes ~25 mins on a g4dn.8xlarge EC2 instance
 #  300 epochs completed in 0.414 hours.
@@ -26,4 +26,16 @@ aws s3 cp s3://image-classification-swimming-pools/model/ ${HOME}/tmp/image-clas
 
 
 
-~/yolov5/runs/train/exp5/
+
+# run inference
+cp ~/datasets/pool/images/train2017/merged-gordon-19_151.143_-33.76.tif ~/detect/test_image.tif
+
+python3 ~/yolov5/detect.py --img 640 --source ~/detect/test_image.tif --weights ~/yolov5/runs/train/exp5/weights/best.pt --conf-thres 0.4
+
+#Model Summary: 224 layers, 7053910 parameters, 0 gradients, 16.3 GFLOPs
+#image 1/1 /home/ec2-user/detect/test_image.tif: 640x640 6 pools, Done. (0.015s)
+#Speed: 0.6ms pre-process, 14.5ms inference, 1.3ms NMS per image at shape (1, 3, 640, 640)
+#Results saved to runs/detect/exp2
+
+# copy result locally
+scp -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID}:~/runs/detect/exp2/test_image.tif ${SCRIPT_DIR}/testing/test_image.tif
