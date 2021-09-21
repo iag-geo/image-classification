@@ -135,7 +135,11 @@ echo "-------------------------------------------------------------------------"
 echo " Setup Postgres Database"
 echo "-------------------------------------------------------------------------"
 
-# new database
+# start postgres
+initdb -D postgres
+pg_ctl -D postgres -l logfile start
+
+# create new database
 createdb --owner=ec2-user geo
 
 # add PostGIS extension to database, create schema and tables
@@ -148,7 +152,7 @@ echo "-------------------------------------------------------------------------"
 echo " Import training data into Postgres (for reference)"
 echo "-------------------------------------------------------------------------"
 
-python3 04_load_training_data_to_postgres.py
+python3 ${HOME}/04_load_training_data_to_postgres.py
 
 
 ## remove proxy if set
