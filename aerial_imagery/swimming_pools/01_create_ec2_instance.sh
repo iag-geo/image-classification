@@ -94,9 +94,8 @@ while [ ! $INSTANCE_READY ]; do
     set -e
 done
 
-# get rid of overbearing IAG welcome message
-ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "cat /dev/null > ~/motd && sudo cp ~/motd /etc"
-exit
+## get rid of overbearing IAG welcome message that obscures useful logging - doesn't work!
+#ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "cat /dev/null > ~/motd && sudo cp ~/motd /etc"
 
 echo "-------------------------------------------------------------------------"
 echo " Copy AWS credentials & supporting files and run remote script"

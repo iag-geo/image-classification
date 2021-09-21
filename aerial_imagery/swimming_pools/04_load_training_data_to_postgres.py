@@ -11,10 +11,10 @@ from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
 # how many parallel processes to run
-cpu_count = 16
+cpu_count = int(multiprocessing.cpu_count() * 0.8)
 
 # input and output path/table
-search_path = "/home/ec2-user/training_data/*/*.tif"
+search_path = "/home/ec2-user/training-data/images/*.tif"
 label_table = "data_science.swimming_pool_labels"
 image_table = "data_science.swimming_pool_images"
 

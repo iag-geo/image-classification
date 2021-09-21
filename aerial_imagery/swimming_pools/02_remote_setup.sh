@@ -128,8 +128,18 @@ echo "-------------------------------------------------------------------------"
 echo " Copy data from S3"
 echo "-------------------------------------------------------------------------"
 
-aws s3 sync s3://image-classification-swimming-pools/training/swimming-pools/ ${HOME}/training_data
-aws s3 cp s3://image-classification-swimming-pools/geoscape/gnaf-cad.dmp ${HOME}
+# training data has to be copied into specific structure for YOLOv5 (TODO: is this comment correct?)
+# images
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640/ ${HOME}/training-data/images --exclude "*" --include "*.tif" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19/ ${HOME}/training-data/images --exclude "*" --include "*.tif" --recursive --no-progress --quiet
+# labels
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/near_burwood_chips_640x640_labels/ ${HOME}/training-data/labels --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
+aws s3 cp s3://image-classification-swimming-pools/training/swimming-pools/chips_gordon_19_labels/ ${HOME}/training-data/labels --exclude "*" --include "*.txt" --exclude "classes.txt" --recursive --no-progress --quiet
+echo "Training data copied"
+
+# GNAF & property boundary tables
+aws s3 cp s3://image-classification-swimming-pools/geoscape/gnaf-cad.dmp ${HOME} --no-progress --quiet
+echo "Postgres dump file copied"
 
 echo "-------------------------------------------------------------------------"
 echo " Setup Postgres Database"

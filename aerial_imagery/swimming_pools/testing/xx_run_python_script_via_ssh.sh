@@ -15,4 +15,4 @@ ssh -F ${SSH_CONFIG} ${INSTANCE_ID} "conda activate yolov5; python3 ${FILENAME}"
 #ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
 
 ## get file count
-#ls -lR /home/ec2-user/training_data/*/*.tif | wc -l
+#ls -lR /home/ec2-user/training-data/*/*.tif | wc -l
