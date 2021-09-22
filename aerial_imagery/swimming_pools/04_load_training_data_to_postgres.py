@@ -18,8 +18,8 @@ search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
 # search_path = "/home/ec2-user/training-data/images/*.tif"
 
 # output tables
-label_table = "data_science.swimming_pool_labels"
-image_table = "data_science.swimming_pool_images"
+label_table = "data_science.pool_training_labels"
+image_table = "data_science.pool_training_images"
 
 # reference tables
 gnaf_table = "data_science.address_principals_nsw"
@@ -232,7 +232,6 @@ def import_label_to_postgres(image_path):
             for line in file:
                 label_row = dict()
                 label_row["file_path"] = image_path
-                label_row["label_type"] = "training"
 
                 # get label centre and polygon
                 label_row["latitude"], label_row["longitude"], label_row["point_geom"], label_row["geom"] = \
