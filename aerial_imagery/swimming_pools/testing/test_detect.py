@@ -57,10 +57,8 @@ def main():
 
     while latitude > y_min:
         longitude = x_min
-
         while longitude < x_max:
             job_list.append([latitude, longitude])
-
             longitude += width
         latitude -= height
 
@@ -93,7 +91,6 @@ def get_labels(coords):
     longitude = coords[1]
 
     # download image
-    # image_file_path = get_image(latitude, longitude, width, height, image_width, image_height)
     image = get_image(latitude, longitude, width, height, image_width, image_height)
     # print(f"Got input image : {datetime.now() - start_time}")
     # start_time = datetime.now()
@@ -117,29 +114,18 @@ def get_labels(coords):
         print(f"Image {latitude}, {longitude} has {len(results_list)} pools : {datetime.now() - start_time}")
 
 
+# downloads images from a WMS service and returns a PIL image (note: coords are top/left)
 def get_image(latitude, longitude, width, height, image_width, image_height):
     try:
         response = wms.getmap(
             layers=["0"],
             srs='EPSG:4326',
-            bbox=(longitude, latitude, longitude + width, latitude + height),
+            bbox=(longitude, latitude - height, longitude + width, latitude),
             format="image/jpeg",
             size=(image_width, image_height)
         )
 
-        # image = io.BytesIO(response.read())
-
-        image = Image.open(io.BytesIO(response.read()))
-
-        # return image
-
-        # # save image
-        # image_path = os.path.join(os.path.join(script_dir, "input"), f"test_image_{latitude}_{longitude}.jpg")
-        # f = open(image_path, "wb")
-        # f.write(response.read())
-        # f.close()
-
-        return image
+        return Image.open(io.BytesIO(response.read()))
 
     except:
         # probably timed out
