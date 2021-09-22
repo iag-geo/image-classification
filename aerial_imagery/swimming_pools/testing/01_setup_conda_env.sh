@@ -2,7 +2,7 @@
 
 # --------------------------------------------------------------------------------------------------------------------
 
-PYTHON_VERSION="3.8"
+PYTHON_VERSION="3.9"
 
 # --------------------------------------------------------------------------------------------------------------------
 
@@ -19,6 +19,10 @@ conda env remove --name yolov5
 # Create Conda environment
 echo "y" | conda create -n yolov5 python=${PYTHON_VERSION}
 
+# restart Conda - bug in iTerm causing it to not work?
+conda init
+source ~/.bash_profile
+
 # activate and setup env
 conda activate yolov5
 conda config --env --add channels conda-forge
@@ -27,8 +31,19 @@ conda config --env --set channel_priority strict
 # reactivate for env vars to take effect
 conda activate yolov5
 
-# install packages
-echo "y" | conda install -c conda-forge rasterio owslib psycopg2
+echo "-------------------------------------------------------------------------"
+echo " Downloading & installing YOLOv5"
+echo "-------------------------------------------------------------------------"
+
+git clone https://github.com/ultralytics/yolov5  # clone repo
+cd yolov5
+pip3 install -r requirements.txt  # install dependencies
+
+echo "-------------------------------------------------------------------------"
+echo " Installing additional Python packages"
+echo "-------------------------------------------------------------------------"
+
+echo "y" | conda install -c conda-forge rasterio psycopg2 owslib
 
 # --------------------------
 # extra bits

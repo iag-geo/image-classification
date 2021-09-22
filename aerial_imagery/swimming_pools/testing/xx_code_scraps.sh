@@ -34,7 +34,8 @@ aws s3 cp s3://image-classification-swimming-pools/model/ ${HOME}/tmp/image-clas
 # run inference
 cp ~/datasets/pool/images/train2017/merged-gordon-19_151.143_-33.76.tif ~/detect/test_image.tif
 
-python3 ~/yolov5/detect.py --img 640 --source ~/detect/test_image.tif --weights ~/yolov5/runs/train/exp5/weights/best.pt --conf-thres 0.4 --save-txt
+python3 ${GIT_HOME}/yolov5/detect.py --img 640 --source "/Users/s57405/Downloads/Swimming Pools with Labels/chips_gordon_19/merged-gordon-19_151.143_-33.76.tif" \
+--weights "/Users/s57405/tmp/image-classification/model/weights/best.pt" --conf-thres 0.4 --save-txt
 
 #Model Summary: 224 layers, 7053910 parameters, 0 gradients, 16.3 GFLOPs
 #image 1/1 /home/ec2-user/detect/test_image.tif: 640x640 6 pools, Done. (0.015s)
