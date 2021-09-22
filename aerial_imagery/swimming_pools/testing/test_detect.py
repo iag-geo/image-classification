@@ -20,6 +20,10 @@ cpu_count = int(multiprocessing.cpu_count() * 0.8)
 label_table = "data_science.pool_labels"
 image_table = "data_science.pool_images"
 
+# reference tables
+gnaf_table = "data_science.address_principals_nsw"
+cad_table = "data_science.aus_cadastre_boundaries_nsw"
+
 # the directory of this script
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
@@ -130,7 +134,7 @@ def get_labels(coords):
     longitude = coords[1]
 
     # download image
-    image = get_image(latitude, longitude, width, height, image_width, image_height)
+    image = get_image(latitude, longitude)
     # print(f"Got input image : {datetime.now() - start_time}")
     # start_time = datetime.now()
 
@@ -155,7 +159,7 @@ def get_labels(coords):
 
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
-def get_image(latitude, longitude, width, height, image_width, image_height):
+def get_image(latitude, longitude):
     try:
         response = wms.getmap(
             layers=["0"],
@@ -177,11 +181,14 @@ def make_wkt_point(x_centre, y_centre):
     return f"POINT({x_centre} {y_centre})"
 
 
-def make_wkt_polygon(x_min, y_min, x_max, y_max):
+def make_wkt_polygon(x_min, y_max):
+    x_max = x_min + width
+    y_min = y_max - height
+
     return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
 
 
-def convert_label_to_polygon(image, label, image_width, image_height):
+def convert_label_to_polygon(latitude, longitude, label):
     # format of YOLO label files provided is:
     #   - class (always 0 as there's only one label in this training data: "pool")
     #   - centroid percentage distance from leftmost pixel
@@ -199,10 +206,10 @@ def convert_label_to_polygon(image, label, image_width, image_height):
     confidence = float(label[5])
 
     # get lat/long bounding box
-    x_min = image["x_min"] + image["width"] * (label_x_centre - label_x_offset / 2.0)
-    y_min = image["y_max"] - image["height"] * (label_y_centre + label_y_offset / 2.0)
-    x_max = image["x_min"] + image["width"] * (label_x_centre + label_x_offset / 2.0)
-    y_max = image["y_max"] - image["height"] * (label_y_centre - label_y_offset / 2.0)
+    x_min = longitude + width * (label_x_centre - label_x_offset / 2.0)
+    y_min = latitude - height * (label_y_centre + label_y_offset / 2.0)
+    x_max = longitude + width * (label_x_centre + label_x_offset / 2.0)
+    y_max = latitude - height * (label_y_centre - label_y_offset / 2.0)
 
     # get lat/long centroid
     x_centre = (x_min + x_max) / 2.0
@@ -210,9 +217,97 @@ def convert_label_to_polygon(image, label, image_width, image_height):
 
     # create well known text (WKT) geometries
     point = make_wkt_point(x_centre, y_centre)
-    polygon = make_wkt_polygon(x_min, y_min, x_max, y_max)
+    polygon = make_wkt_polygon(latitude, longitude)
 
     return confidence, y_centre, x_centre, point, polygon
+
+
+def get_parcel_and_address_ids(latitude, longitude):
+    legal_parcel_id = None
+    gnaf_pid = None
+    address = None
+
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # get legal parcel ID and address ID using spatial join (joining on legal parcel ID is flaky due to GNAF's approach)
+    sql = f"""select cad.jurisdiction_id, 
+                     gnaf.gnaf_pid, 
+                     concat(gnaf.address, ', ', gnaf.locality_name, ' ', gnaf.state, ' ', gnaf.postcode) as address
+              from {cad_table} as cad
+              inner join {gnaf_table} as gnaf on st_intersects(gnaf.geom, cad.geom)
+              where st_intersects(st_setsrid(st_makepoint({longitude}, {latitude}), 4283), cad.geom)"""
+    pg_cur.execute(sql)
+
+    # TODO: import all the results. Can return multiple addresses due to strata titles & the specifics of land titling
+    row = pg_cur.fetchone()
+
+    if row is not None:
+        legal_parcel_id = row[0]
+        gnaf_pid = row[1]
+        address = row[2]
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
+    # print(f"{legal_parcel_id} : {gnaf_pid}")
+
+    return legal_parcel_id, gnaf_pid, address
+
+
+def insert_row(table_name, row):
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # get column names & values (dict keys must match existing table structure)
+    columns = list(row.keys())
+    values = [row[column] for column in columns]
+
+    insert_statement = f"INSERT INTO {table_name} (%s) VALUES %s"
+    sql = pg_cur.mogrify(insert_statement, (AsIs(','.join(columns)), tuple(values))).decode("utf-8")
+    pg_cur.execute(sql)
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
+
+def import_label_to_postgres(image_path, latitude, longitude, label_list):
+    label_count = 0
+
+    # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
+    for label in label_list:
+        label_row = dict()
+        label_row["file_path"] = image_path
+
+        # get label centre and polygon
+        label_row["confidence"], label_row["latitude"], label_row["longitude"], label_row["point_geom"], label_row["geom"] = \
+            convert_label_to_polygon(latitude, longitude, label.split(" "))
+
+        # get legal parcel identifier & address ID (gnaf_pid)
+        label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
+            get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
+
+        # insert into postgres
+        insert_row(label_table,  label_row)
+
+        label_count += 1
+
+    # import image bounds as polygons for reference
+    image_row = dict()
+    image_row["file_path"] = image_path
+    image_row["label_count"] = label_count
+    image_row["width"] = width
+    image_row["height"] = width
+    image_row["geom"] = make_wkt_polygon(latitude, longitude)
+    insert_row(image_table,  image_row)
+
+    return label_count
 
 
 if __name__ == "__main__":
