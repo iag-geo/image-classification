@@ -141,17 +141,19 @@ def get_labels(coords):
     if image is not None:
         # Run inference
         results = model([image], size=640)
-        results_list = results.xyxy[0].tolist()
+        label_list = results.xyxy[0].tolist()
 
-        # save labelled image whether it has any labels or not (for QA)
-        results.save(os.path.join(script_dir, "output"))  # or .show()
+        # # save labelled image whether it has any labels or not (for QA)
+        # results.save(os.path.join(script_dir, "output"))  # or .show()
 
         # save labels if any
-        label_count = len(results_list)
+        label_count = len(label_list)
         if label_count > 0:
-            f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
-            f.write("\n".join(" ".join(map(str, row)) for row in results_list))
-            f.close()
+            # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
+            # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
+            # f.close()
+
+            import_label_to_postgres(latitude, longitude, label_list)
 
         print(f"Image {latitude}, {longitude} has {label_count} pools : {datetime.now() - start_time}")
 
@@ -277,8 +279,11 @@ def insert_row(table_name, row):
     pg_pool.putconn(pg_conn)
 
 
-def import_label_to_postgres(image_path, latitude, longitude, label_list):
+def import_label_to_postgres(latitude, longitude, label_list):
     label_count = 0
+
+    # todo: fix this - it means nothing
+    image_path = f"image_{latitude}_{longitude}.jpg"
 
     # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
     for label in label_list:
@@ -306,8 +311,6 @@ def import_label_to_postgres(image_path, latitude, longitude, label_list):
     image_row["height"] = width
     image_row["geom"] = make_wkt_polygon(latitude, longitude)
     insert_row(image_table,  image_row)
-
-    return label_count
 
 
 if __name__ == "__main__":
