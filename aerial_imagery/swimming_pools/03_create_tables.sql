@@ -33,6 +33,8 @@ drop table if exists data_science.swimming_pool_images;
 create table data_science.swimming_pool_images (
     file_path text NOT NULL,
     label_count smallint NOT NULL,
+    width double precision NOT NULL,
+    height double precision NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
 );
 alter table data_science.swimming_pool_images owner to "ec2-user";

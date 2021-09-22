@@ -13,9 +13,11 @@ from psycopg2.extensions import AsIs
 # how many parallel processes to run
 cpu_count = int(multiprocessing.cpu_count() * 0.8)
 
-# input and output path/table
-# search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
-search_path = "/home/ec2-user/training-data/images/*.tif"
+# input images
+search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
+# search_path = "/home/ec2-user/training-data/images/*.tif"
+
+# output tables
 label_table = "data_science.swimming_pool_labels"
 image_table = "data_science.swimming_pool_images"
 
@@ -24,8 +26,8 @@ gnaf_table = "data_science.address_principals_nsw"
 cad_table = "data_science.aus_cadastre_boundaries_nsw"
 
 # create postgres connection pool
-# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
-pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
+pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
+# pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 
@@ -112,8 +114,8 @@ def get_image(file_path):
     output["x_max"] = bounds.right
     output["y_max"] = bounds.top
 
-    output["x_width"] = bounds.right - bounds.left
-    output["y_height"] = bounds.top - bounds.bottom
+    output["width"] = bounds.right - bounds.left
+    output["height"] = bounds.top - bounds.bottom
 
     # output["x_pixel_size"] = (bounds.right - bounds.left) / float(output["width"])
     # output["y_pixel_size"] = (bounds.top - bounds.bottom) / float(output["height"])
@@ -145,10 +147,10 @@ def convert_label_to_polygon(image, label):
     #   - percentage height of bounding box
 
     # get lat/long bounding box
-    x_min = image["x_min"] + image["x_width"] * (float(label[1]) - float(label[3]) / 2.0)
-    y_min = image["y_max"] - image["y_height"] * (float(label[2]) + float(label[4]) / 2.0)
-    x_max = image["x_min"] + image["x_width"] * (float(label[1]) + float(label[3]) / 2.0)
-    y_max = image["y_max"] - image["y_height"] * (float(label[2]) - float(label[4]) / 2.0)
+    x_min = image["x_min"] + image["width"] * (float(label[1]) - float(label[3]) / 2.0)
+    y_min = image["y_max"] - image["height"] * (float(label[2]) + float(label[4]) / 2.0)
+    x_max = image["x_min"] + image["width"] * (float(label[1]) + float(label[3]) / 2.0)
+    y_max = image["y_max"] - image["height"] * (float(label[2]) - float(label[4]) / 2.0)
 
     # get lat/long centroid
     x_centre = (x_min + x_max) / 2.0
@@ -249,6 +251,8 @@ def import_label_to_postgres(image_path):
     image_row = dict()
     image_row["file_path"] = image_path
     image_row["label_count"] = label_count
+    image_row["width"] = image["width"]
+    image_row["height"] = image["height"]
     image_row["geom"] = make_wkt_polygon(image["x_min"], image["y_min"], image["x_max"], image["y_max"])
     insert_row(image_table,  image_row)
 
