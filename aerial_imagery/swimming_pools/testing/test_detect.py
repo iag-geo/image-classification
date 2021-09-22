@@ -1,5 +1,4 @@
 
-# import cv2
 import io
 import multiprocessing
 import os
@@ -30,7 +29,6 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 wms = WebMapService(wms_base_url)
-# print(list(wms.contents))
 
 # coordinates of area to process
 x_min = 151.1331
@@ -39,7 +37,7 @@ x_max = 151.1703
 y_max = -33.8672
 
 # create images with the same pixel width & height as the training data
-width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough4
+width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
 height = width
 image_width = 640
 image_height = image_width
@@ -50,16 +48,14 @@ pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' passwor
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 # load trained pool model
-model = torch.hub.load("/Users/s57405/git/yolov5", "custom", path="/Users/s57405/tmp/image-classification/model/weights/best.pt", source="local")  # local repo
+model = torch.hub.load("/Users/s57405/git/yolov5", "custom",
+                       path="/Users/s57405/tmp/image-classification/model/weights/best.pt", source="local")
 
 
 def main():
     start_time = datetime.now()
 
     print(f"START : swimming pool labelling : {start_time}")
-
-    # print(f"Model loaded : {datetime.now() - start_time}")
-    # start_time = datetime.now()
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -140,15 +136,16 @@ def get_labels(coords):
 
     if image is not None:
         # Run inference
-        results = model([image], size=640)
+        results = model(image)
         label_list = results.xyxy[0].tolist()
 
         # # save labelled image whether it has any labels or not (for QA)
         # results.save(os.path.join(script_dir, "output"))  # or .show()
 
-        # save labels if any
+        # export results to postgres
         label_count = len(label_list)
         if label_count > 0:
+            # # save labels
             # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
             # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
             # f.close()
@@ -162,56 +159,59 @@ def get_labels(coords):
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
 def get_image(latitude, longitude):
-    try:
-        response = wms.getmap(
-            layers=["0"],
-            srs='EPSG:4326',
-            bbox=(longitude, latitude - height, longitude + width, latitude),
-            format="image/jpeg",
-            size=(image_width, image_height)
-        )
+    # try:
+    response = wms.getmap(
+        layers=["0"],
+        srs='EPSG:4326',
+        bbox=(longitude, latitude - height, longitude + width, latitude),
+        format="image/jpeg",
+        size=(image_width, image_height)
+    )
 
-        return Image.open(io.BytesIO(response.read()))
+    image_file = io.BytesIO(response.read())
+    image = Image.open(image_file)
+    # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-    except:
-        # probably timed out
-        print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
-        return None
+    return image
+
+    # except:
+    #     # probably timed out
+    #     print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
+    #     return None
 
 
 def make_wkt_point(x_centre, y_centre):
     return f"POINT({x_centre} {y_centre})"
 
 
-def make_wkt_polygon(x_min, y_max):
-    x_max = x_min + width
-    y_min = y_max - height
-
+def make_wkt_polygon(x_min, y_min, x_max, y_max):
     return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
 
 
 def convert_label_to_polygon(latitude, longitude, label):
-    # format of YOLO label files provided is:
-    #   - class (always 0 as there's only one label in this training data: "pool")
-    #   - centroid percentage distance from leftmost pixel
-    #   - centroid percentage distance from topmost pixel
-    #   - percentage width of bounding box
-    #   - percentage height of bounding box
-    #   - confidence (0 to 1)
+    # format of inference label files is:
+    #   - left pixel
+    #   - top pixel
+    #   - right pixel
+    #   - bottom pixel
+    #   - confidence (0.00 to 1.00)
+    #   - unknown (class? always 0.0)
+
+    # e.g. [364.4530029296875, 480.5206298828125, 393.81219482421875, 512.9512939453125, 0.9367147088050842, 0.0]
 
     # these need to be converted to percentages
-    label_x_centre = float(label[1]) / float(image_width)
-    label_y_centre = float(label[2]) / float(image_height)
-    label_x_offset = float(label[3]) / float(image_width)
-    label_y_offset = float(label[4]) / float(image_height)
+    label_left = float(label[0]) / float(image_width)
+    label_top = float(label[1]) / float(image_height)
+    label_right = float(label[2]) / float(image_width)
+    label_bottom = float(label[3]) / float(image_height)
 
-    confidence = float(label[5])
+    confidence = float(label[4])
 
     # get lat/long bounding box
-    x_min = longitude + width * (label_x_centre - label_x_offset / 2.0)
-    y_min = latitude - height * (label_y_centre + label_y_offset / 2.0)
-    x_max = longitude + width * (label_x_centre + label_x_offset / 2.0)
-    y_max = latitude - height * (label_y_centre - label_y_offset / 2.0)
+    x_min = longitude + width * label_left
+    y_min = latitude - height * label_bottom
+    x_max = longitude + width * label_right
+    y_max = latitude - height * label_top
 
     # get lat/long centroid
     x_centre = (x_min + x_max) / 2.0
@@ -219,7 +219,7 @@ def convert_label_to_polygon(latitude, longitude, label):
 
     # create well known text (WKT) geometries
     point = make_wkt_point(x_centre, y_centre)
-    polygon = make_wkt_polygon(latitude, longitude)
+    polygon = make_wkt_polygon(x_min, y_min, x_max, y_max)
 
     return confidence, y_centre, x_centre, point, polygon
 
@@ -282,7 +282,7 @@ def insert_row(table_name, row):
 def import_label_to_postgres(latitude, longitude, label_list):
     label_count = 0
 
-    # todo: fix this - it means nothing
+    # todo: fix this - the file name means nothing
     image_path = f"image_{latitude}_{longitude}.jpg"
 
     # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
@@ -292,7 +292,7 @@ def import_label_to_postgres(latitude, longitude, label_list):
 
         # get label centre and polygon
         label_row["confidence"], label_row["latitude"], label_row["longitude"], label_row["point_geom"], label_row["geom"] = \
-            convert_label_to_polygon(latitude, longitude, label.split(" "))
+            convert_label_to_polygon(latitude, longitude, label)
 
         # get legal parcel identifier & address ID (gnaf_pid)
         label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
@@ -304,12 +304,15 @@ def import_label_to_postgres(latitude, longitude, label_list):
         label_count += 1
 
     # import image bounds as polygons for reference
+    x_max = longitude + width
+    y_min = latitude - height
+
     image_row = dict()
     image_row["file_path"] = image_path
     image_row["label_count"] = label_count
     image_row["width"] = width
     image_row["height"] = width
-    image_row["geom"] = make_wkt_polygon(latitude, longitude)
+    image_row["geom"] = make_wkt_polygon(longitude, y_min, x_max, latitude)
     insert_row(image_table,  image_row)
 
 
