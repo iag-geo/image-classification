@@ -34,7 +34,7 @@ pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 def main():
     start_time = datetime.now()
 
-    print(f"START : swimming pool image & label import : {datetime.now()}")
+    print(f"START : swimming pool image & label import : {start_time}")
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -146,11 +146,16 @@ def convert_label_to_polygon(image, label):
     #   - percentage width of bounding box
     #   - percentage height of bounding box
 
+    label_x_centre = float(label[1])
+    label_y_centre = float(label[2])
+    label_x_offset = float(label[3])
+    label_y_offset = float(label[4])
+
     # get lat/long bounding box
-    x_min = image["x_min"] + image["width"] * (float(label[1]) - float(label[3]) / 2.0)
-    y_min = image["y_max"] - image["height"] * (float(label[2]) + float(label[4]) / 2.0)
-    x_max = image["x_min"] + image["width"] * (float(label[1]) + float(label[3]) / 2.0)
-    y_max = image["y_max"] - image["height"] * (float(label[2]) - float(label[4]) / 2.0)
+    x_min = image["x_min"] + image["width"] * (label_x_centre - label_x_offset / 2.0)
+    y_min = image["y_max"] - image["height"] * (label_y_centre + label_y_offset / 2.0)
+    x_max = image["x_min"] + image["width"] * (label_x_centre + label_x_offset / 2.0)
+    y_max = image["y_max"] - image["height"] * (label_y_centre - label_y_offset / 2.0)
 
     # get lat/long centroid
     x_centre = (x_min + x_max) / 2.0
