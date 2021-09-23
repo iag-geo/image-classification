@@ -2,9 +2,9 @@
 import io
 import multiprocessing
 import os
+import platform
 import psycopg2
 import psycopg2.extras
-import requests
 import torch
 import torch.nn as nn
 
@@ -13,12 +13,7 @@ from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-from torch.multiprocessing import cpu_count, Pool, Process, set_start_method
-
-# how many parallel processes to run
-# gpu_count = 4
-# cpu_count = int(cpu_count() * 0.5)
-cpu_count = 48  # cap it to stop CUDA out of memory errors (12 for 1 GPU, 48 for 4 GPUs)
+from torch.multiprocessing import set_start_method
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -38,6 +33,8 @@ wms = WebMapService(wms_base_url)
 # coordinates of area to process
 x_min = 151.1331
 y_min = -33.8912
+# x_max = 151.1431
+# y_max = -33.8812
 x_max = 151.1703
 y_max = -33.8672
 
@@ -47,35 +44,36 @@ height = width
 image_width = 640
 image_height = image_width
 
+# auto-switch model and postgres settings while testing on both MocBook and EC2
+if platform.system() == "Darwin":
+    pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
+
+    # model paths
+    yolo_home = f"{os.path.expanduser('~')}/git/yolov5"
+    model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
+
+    # how many parallel processes to run
+    cuda_gpu_count = 0
+    # cpu_count = int(cpu_count() * 0.8)
+    cpu_count = 16
+else:
+    pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
+
+    # model paths
+    yolo_home = f"{os.path.expanduser('~')}/yolov5"
+    model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
+
+    # how many parallel processes to run
+    cuda_gpu_count = 4
+    # cpu_count = int(cpu_count() * 0.8)
+    cpu_count = 48
+
 # create postgres connection pool
-# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
-pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
-
-# load trained pool model to run on all GPUs or CPUs
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-print(f"{device} is available with {torch.cuda.device_count()} GPUs")
-
-
-# model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
-#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
-#                        source="local")
-
-
-model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
-                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
-                       source="local")
-# model = torch.hub.load("ultralytics/yolov5", "custom",
-#                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
-# , force_reload=True
-# model= nn.DataParallel(model, device_ids=[0, 1, 2, 3])
-# model.to(device)
-# model.share_memory()
-model = nn.DataParallel(model.cuda())
 
 
 def main():
+    full_start_time = datetime.now()
     start_time = datetime.now()
 
     print(f"START : swimming pool labelling : {start_time}")
@@ -89,7 +87,7 @@ def main():
     pg_cur.execute(f"truncate table {label_table}")
     pg_cur.execute(f"truncate table {image_table}")
 
-    # cycle through the map images starting top/left and going left then down to create job list
+    # cycle through the map images starting top/left and going left then down to create the job list
     job_list = list()
     image_count = 0
     latitude = y_max
@@ -102,9 +100,6 @@ def main():
             longitude += width
         latitude -= height
 
-    # required for CUDA multiprocessing
-    set_start_method("spawn", force=True)
-
     mp_pool = multiprocessing.Pool(cpu_count)
     mp_results = mp_pool.imap_unordered(get_image, job_list)
     mp_pool.close()
@@ -114,37 +109,27 @@ def main():
     image_fail_count = 0
 
     # get rid of image download failures and log them
-    input_images = list()
-    for image in mp_results:
-        if image is not None:
-            input_images.append(image)
+    coords_list = list()
+    image_list = list()
+    for mp_result in mp_results:
+        if mp_result is not None:
+            coords_list.append(mp_result[0])
+            image_list.append(mp_result[1])
         else:
             image_fail_count += 1
 
-    # for mp_result in mp_results:
-    #     if mp_result > 0:
-    #         total_label_count += mp_result
-    #         label_file_count += 1
-    #     elif mp_result == 0:
-    #         no_label_file_count += 1
-    #     elif mp_result == -1:
-    #         image_fail_count += 1
-    #     else:
-    #         print("WARNING: multiprocessing error : {}".format(mp_result))
-
-    # output results to screen
-    print(f"\t - {image_count} images processed")
+    # show image download results
+    print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
     print(f"\t\t - {image_fail_count} images FAILED to download")
+    start_time = datetime.now()
 
+    # process all images in one hit
+    start_time, total_label_count = get_labels(image_list, coords_list)
+    print(f"\t - {total_label_count} labels imported : {datetime.now() - start_time}")
+    # start_time = datetime.now()
 
-
-
-    total_label_count = 0
-    label_file_count = 0
-    no_label_file_count = 0
-
-
-    print(f"\t - {total_label_count} labels imported")
+    # label_file_count = 0
+    # no_label_file_count = 0
 
     # get counts of missing parcels and addresses
     pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
@@ -157,31 +142,47 @@ def main():
     if row is not None:
         print(f"\t\t - {int(row[0])} missing address IDs")
 
-    print(f"\t - {label_file_count} images with labels")
-    print(f"\t - {no_label_file_count} images with no labels")
+    # print(f"\t - {label_file_count} images with labels")
+    # print(f"\t - {no_label_file_count} images with no labels")
 
     # clean up postgres connection
     pg_cur.close()
     pg_pool.putconn(pg_conn)
 
-    print(f"FINISHED : swimming pool labelling : {datetime.now() - start_time}")
+    print(f"FINISHED : swimming pool labelling : {datetime.now() - full_start_time}")
 
 
-def get_labels(coords):
+def get_labels(image_list, coords_list):
     start_time = datetime.now()
 
-    latitude = coords[0]
-    longitude = coords[1]
+    if cuda_gpu_count > 1:
+        # required for torch multiprocessing with CUDA
+        set_start_method("spawn", force=True)
 
-    # download image
-    image = get_image(latitude, longitude)
-    # print(f"Got input image : {datetime.now() - start_time}")
-    # start_time = datetime.now()
+    # load trained pool model to run on all GPUs or CPUs
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"{device} is available with {torch.cuda.device_count()} GPUs")
 
-    if image is not None:
-        # Run inference
-        results = model(image)
-        label_list = results.xyxy[0].tolist()
+    model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
+
+    if cuda_gpu_count > 1:
+        # model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+        model = nn.DataParallel(model.cuda())
+        model.to(device)
+        # model.share_memory()
+
+    # Run inference
+    results = model(image_list)
+    tensor_labels = results.xyxy
+
+    print(f"\t - pool detection done : {datetime.now() - start_time}")
+    start_time = datetime.now()
+
+    i = 0
+    total_label_count = 0
+
+    for tensor_label in tensor_labels:
+        label_list = tensor_label.tolist()
 
         # # save labelled image whether it has any labels or not (for QA)
         # results.save(os.path.join(script_dir, "output"))  # or .show()
@@ -189,21 +190,24 @@ def get_labels(coords):
         # export labels to postgres
         label_count = len(label_list)
         if label_count > 0:
+            total_label_count += label_count
+
             # # save labels
             # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
             # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
             # f.close()
 
+            # get corresponding coords of image
+            latitude = coords_list[i][0]
+            longitude = coords_list[i][1]
+
             import_label_to_postgres(latitude, longitude, label_list)
 
-        # export image polygon to Postgres
-        import_image_to_postgres(latitude, longitude, label_count)
+            # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
-        print(f"Image {latitude}, {longitude} has {label_count} pools : {datetime.now() - start_time}")
-    else:
-        label_count = -1
+        i += 1
 
-    return label_count
+    return start_time, total_label_count
 
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
@@ -225,7 +229,10 @@ def get_image(coords):
         image = Image.open(image_file)
         # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-        return image
+        # export image polygon to Postgres
+        import_image_to_postgres(latitude, longitude)
+
+        return [latitude, longitude], image
 
     except:
         # probably timed out
@@ -353,7 +360,7 @@ def import_label_to_postgres(latitude, longitude, label_list):
         insert_row(label_table,  label_row)
 
 
-def import_image_to_postgres(latitude, longitude, label_count):
+def import_image_to_postgres(latitude, longitude):
     # todo: fix this - the file name means nothing
     image_path = f"image_{latitude}_{longitude}.jpg"
 
@@ -363,7 +370,7 @@ def import_image_to_postgres(latitude, longitude, label_count):
 
     image_row = dict()
     image_row["file_path"] = image_path
-    image_row["label_count"] = label_count
+    # image_row["label_count"] = label_count
     image_row["width"] = width
     image_row["height"] = width
     image_row["geom"] = make_wkt_polygon(longitude, y_min, x_max, latitude)

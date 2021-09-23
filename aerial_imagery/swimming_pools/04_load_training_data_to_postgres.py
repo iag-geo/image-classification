@@ -2,6 +2,7 @@
 import glob
 import multiprocessing
 import os
+import platform
 import psycopg2
 import psycopg2.extras
 import rasterio
@@ -10,14 +11,14 @@ from datetime import datetime
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
-# how many parallel processes to run
-cpu_count = int(multiprocessing.cpu_count() * 0.9)
+# auto-switch model and postgres settings while testing on both MocBook and EC2
+if platform.system() == "Darwin":
+    machine_type = "macbook"
+else:
+    machine_type = "not a macbook"
 
-# input images
-# search_path = f"{os.path.expanduser('~')}/Downloads/Swimming Pools with Labels/*/*.tif"
-# label_path = None
-search_path = f"{os.path.expanduser('~')}/datasets/pool/images/train2017/*.tif"
-label_path = f"{os.path.expanduser('~')}/datasets/pool/labels/train2017"
+# how many parallel processes to run
+cpu_count = int(multiprocessing.cpu_count() * 0.8)
 
 # output tables
 label_table = "data_science.pool_training_labels"
@@ -27,9 +28,21 @@ image_table = "data_science.pool_training_images"
 gnaf_table = "data_science.address_principals_nsw"
 cad_table = "data_science.aus_cadastre_boundaries_nsw"
 
+# auto-switch file and postgres settings while testing on both MocBook and EC2
+if platform.system() == "Darwin":
+    pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
+
+    # input images
+    search_path = f"{os.path.expanduser('~')}/Downloads/Swimming Pools with Labels/*/*.tif"
+    label_path = None
+else:
+    pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
+
+    # input images
+    search_path = f"{os.path.expanduser('~')}/datasets/pool/images/train2017/*.tif"
+    label_path = f"{os.path.expanduser('~')}/datasets/pool/labels/train2017"
+
 # create postgres connection pool
-# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
-pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 
