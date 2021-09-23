@@ -1,6 +1,6 @@
 
 import io
-import multiprocessing
+# import multiprocessing
 import os
 import psycopg2
 import psycopg2.extras
@@ -12,16 +12,17 @@ from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-from torch.multiprocessing import Pool, Process, set_start_method
+from torch.multiprocessing import cpu_count, Pool, Process, set_start_method
 
 # required for CUDA multiprocessing
 try:
-    set_start_method('spawn')
+    set_start_method("spawn", force=True)
 except RuntimeError:
     pass
 
 # how many parallel processes to run
-cpu_count = int(multiprocessing.cpu_count() * 0.9)
+# cpu_count = int(cpu_count() * 0.5)
+cpu_count = 48  # cap it to stop CUDA out of memory errors (12 for 1 GPU, 48 for 4 GPUs)
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -36,15 +37,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
-
-#GIC aerial imagery API token (expires every 12 hours)
-# gic_token = "62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71"
-
-# https://api.gic.org//images/ExtractImages/bluesky-ultra-oceania?mode=best&EPSG=4326&xcoordinate=151.14&ycoordinate=-33.85&width=640&height=640&zoom=18&AuthToken=62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71
-
-
 wms = WebMapService(wms_base_url)
-
 
 # coordinates of area to process
 x_min = 151.1331
@@ -65,9 +58,17 @@ pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 # load trained pool model
 # model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
-#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt", source="local")
+#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
+#                        source="local")
+
+
 model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
-                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt", source="local", force_reload=True)
+                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
+                       source="local")
+# model = torch.hub.load("ultralytics/yolov5", "custom",
+#                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
+# , force_reload=True
+
 
 def main():
     start_time = datetime.now()
@@ -113,7 +114,7 @@ def main():
             label_file_count += 1
         elif mp_result == 0:
             no_label_file_count += 1
-        elif mp_result == 0:
+        elif mp_result == -1:
             image_fail_count += 1
         else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
