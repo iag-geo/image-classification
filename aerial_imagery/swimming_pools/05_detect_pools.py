@@ -6,7 +6,7 @@ import platform
 import psycopg2
 import psycopg2.extras
 import torch
-import torch.nn as nn
+# import torch.nn as nn
 
 from datetime import datetime
 from owslib.wms import WebMapService
@@ -14,7 +14,6 @@ from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
 # from torch.multiprocessing import set_start_method
-from torchvision import transforms
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -121,16 +120,13 @@ def main():
         else:
             image_fail_count += 1
 
-    # convert list of image tensors into a tensor (to enable multi-GPU processing)
-    tensor_of_tensors = torch.stack((image_list))
-
     # show image download results
     print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
     print(f"\t\t - {image_fail_count} images FAILED to download")
     start_time = datetime.now()
 
     # process all images in one hit
-    start_time, total_label_count = get_labels(tensor_of_tensors, coords_list)
+    start_time, total_label_count = get_labels(image_list, coords_list)
     print(f"\t - {total_label_count} labels imported : {datetime.now() - start_time}")
     # start_time = datetime.now()
 
@@ -171,10 +167,10 @@ def get_labels(image_list, coords_list):
 
     model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
 
-    if cuda_gpu_count > 1:
-        model = nn.DataParallel(model)
-        model.to(device)
-        image_list = image_list.to(device)
+    # if cuda_gpu_count > 1:
+    #     model = nn.DataParallel(model)
+    #     model.to(device)
+    #     image_list = image_list.to(device)
 
     # Run inference
     results = model(image_list)
@@ -221,31 +217,28 @@ def get_image(coords):
     latitude = coords[0]
     longitude = coords[1]
 
-    # try:
-    response = wms.getmap(
-        layers=["0"],
-        srs='EPSG:4326',
-        bbox=(longitude, latitude - height, longitude + width, latitude),
-        format="image/jpeg",
-        size=(image_width, image_height)
-    )
+    try:
+        response = wms.getmap(
+            layers=["0"],
+            srs='EPSG:4326',
+            bbox=(longitude, latitude - height, longitude + width, latitude),
+            format="image/jpeg",
+            size=(image_width, image_height)
+        )
 
-    image_file = io.BytesIO(response.read())
-    image = Image.open(image_file)
-    # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
+        image_file = io.BytesIO(response.read())
+        image = Image.open(image_file)
+        # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-    # convert image to Tensor
-    image_tensor = transforms.PILToTensor()(image)
+        # export image polygon to Postgres
+        import_image_to_postgres(latitude, longitude)
 
-    # export image polygon to Postgres
-    import_image_to_postgres(latitude, longitude)
+        return [latitude, longitude], image
 
-    return [latitude, longitude], image_tensor
-
-    # except:
-    #     # probably timed out
-    #     print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
-    #     return None
+    except:
+        # probably timed out
+        print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
+        return None
 
 
 def make_wkt_point(x_centre, y_centre):
