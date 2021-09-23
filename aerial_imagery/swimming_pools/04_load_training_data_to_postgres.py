@@ -11,7 +11,7 @@ from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
 # how many parallel processes to run
-cpu_count = int(multiprocessing.cpu_count() * 0.8)
+cpu_count = int(multiprocessing.cpu_count() * 0.9)
 
 # input images
 search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"

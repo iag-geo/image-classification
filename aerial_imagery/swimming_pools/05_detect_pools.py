@@ -14,7 +14,7 @@ from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
 # how many parallel processes to run
-cpu_count = int(multiprocessing.cpu_count() * 0.8)
+cpu_count = int(multiprocessing.cpu_count() * 0.9)
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -57,9 +57,10 @@ pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' passwor
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 # load trained pool model
-model = torch.hub.load("/Users/s57405/git/yolov5", "custom",
-                       path="/Users/s57405/tmp/image-classification/model/weights/best.pt", source="local")
-
+# model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
+#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt", source="local")
+model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
+                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt", source="local")
 
 def main():
     start_time = datetime.now()
