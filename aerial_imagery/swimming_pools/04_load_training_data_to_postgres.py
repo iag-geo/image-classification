@@ -26,8 +26,8 @@ gnaf_table = "data_science.address_principals_nsw"
 cad_table = "data_science.aus_cadastre_boundaries_nsw"
 
 # create postgres connection pool
-pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
-# pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
+# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
+pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 

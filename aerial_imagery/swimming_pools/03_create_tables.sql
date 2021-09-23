@@ -4,7 +4,7 @@ create extension if not exists postgis;
 
 -- create schema
 create schema if not exists data_science;
-alter schema data_science owner to "postgres";
+alter schema data_science owner to "ec2-user";
 
 -- create image & label tables for both training and inference
 
@@ -20,7 +20,7 @@ create table data_science.pool_training_labels (
     geom geometry(Polygon, 4283) NOT NULL
 );
 
-alter table data_science.pool_training_labels owner to "postgres";
+alter table data_science.pool_training_labels owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 CREATE INDEX pool_training_labels_file_path_idx ON data_science.pool_training_labels USING btree (file_path);
@@ -37,7 +37,7 @@ create table data_science.pool_training_images (
     height double precision NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
 );
-alter table data_science.pool_training_images owner to "postgres";
+alter table data_science.pool_training_images owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 ALTER TABLE data_science.pool_training_images ADD CONSTRAINT pool_training_images_pkey PRIMARY KEY (file_path);
@@ -58,7 +58,7 @@ create table data_science.pool_labels (
     geom geometry(Polygon, 4283) NOT NULL
 );
 
-alter table data_science.pool_labels owner to "postgres";
+alter table data_science.pool_labels owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 CREATE INDEX pool_labels_file_path_idx ON data_science.pool_labels USING btree (file_path);
@@ -75,7 +75,7 @@ create table data_science.pool_images (
     height double precision NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
 );
-alter table data_science.pool_images owner to "postgres";
+alter table data_science.pool_images owner to "ec2-user";
 
 -- TODO: move these to after data import if this needs to scale
 ALTER TABLE data_science.pool_images ADD CONSTRAINT pool_images_pkey PRIMARY KEY (file_path);

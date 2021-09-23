@@ -52,8 +52,8 @@ image_width = 640
 image_height = image_width
 
 # create postgres connection pool
-pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
-# pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
+# pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
+pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
 # load trained pool model
