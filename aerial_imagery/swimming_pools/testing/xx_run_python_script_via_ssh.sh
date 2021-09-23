@@ -16,6 +16,13 @@ ssh -F ${SSH_CONFIG} ${INSTANCE_ID} "conda activate yolov5; pg_dump -Fc -d geo -
 scp -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID}:~/pools.dmp ${SCRIPT_DIR}/
 
 
+# load into local postgres
+/Applications/Postgres.app/Contents/Versions/13/bin/psql -d geo -c "drop table data_science.pool_images cascade"
+/Applications/Postgres.app/Contents/Versions/13/bin/psql -d geo -c "drop table data_science.pool_labels cascade"
+/Applications/Postgres.app/Contents/Versions/13/bin/pg_restore -Fc -d geo -p 5432 -U postgres ${SCRIPT_DIR}/pools.dmp
+/Applications/Postgres.app/Contents/Versions/13/bin/psql -d geo -c "select count(*) as image_count from data_science.pool_images"
+/Applications/Postgres.app/Contents/Versions/13/bin/psql -d geo -c "select count(*) as label_count from data_science.pool_labels"
+
 
 #ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
 

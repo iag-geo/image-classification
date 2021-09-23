@@ -71,7 +71,7 @@ else:
     # how many parallel processes to run
 
     # process_count = int(process_count() * 0.8)
-    process_count = 48
+    process_count = 64
 
 # get count of CUDA enabled GPUs
 cuda_gpu_count = torch.cuda.device_count()
