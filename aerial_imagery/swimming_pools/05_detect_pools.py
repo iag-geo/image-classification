@@ -1,6 +1,6 @@
 
 import io
-# import multiprocessing
+import multiprocessing
 import os
 import psycopg2
 import psycopg2.extras
@@ -52,6 +52,28 @@ image_height = image_width
 pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
+# load trained pool model to run on all GPUs or CPUs
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print(f"{device} is available with {torch.cuda.device_count()} GPUs")
+
+
+# model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
+#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
+#                        source="local")
+
+
+model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
+                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
+                       source="local")
+# model = torch.hub.load("ultralytics/yolov5", "custom",
+#                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
+# , force_reload=True
+# model= nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+# model.to(device)
+# model.share_memory()
+model = nn.DataParallel(model.cuda())
+
 
 def main():
     start_time = datetime.now()
@@ -67,21 +89,6 @@ def main():
     pg_cur.execute(f"truncate table {label_table}")
     pg_cur.execute(f"truncate table {image_table}")
 
-    # model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
-    #                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
-    #                        source="local")
-
-    model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
-                           path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
-                           source="local")
-    # model = torch.hub.load("ultralytics/yolov5", "custom",
-    #                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
-    # , force_reload=True
-    # model= nn.DataParallel(model, device_ids=[0, 1, 2, 3])
-    # model.to(device)
-    # model.share_memory()
-    # model = nn.DataParallel(model.cuda())
-
     # cycle through the map images starting top/left and going left then down to create job list
     job_list = list()
     image_count = 0
@@ -91,43 +98,52 @@ def main():
         longitude = x_min
         while longitude < x_max:
             image_count += 1
-            job_list.append([latitude, longitude, model])
+            job_list.append([latitude, longitude])
             longitude += width
         latitude -= height
 
     # required for CUDA multiprocessing
     set_start_method("spawn", force=True)
 
-    # load trained pool model to run on all GPUs or CPUs
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    print(f"{device} is available with {torch.cuda.device_count()} GPUs")
-
-    mp_pool = Pool(cpu_count)
-    mp_results = mp_pool.imap_unordered(get_labels, job_list)
+    mp_pool = multiprocessing.Pool(cpu_count)
+    mp_results = mp_pool.imap_unordered(get_image, job_list)
     mp_pool.close()
     mp_pool.join()
 
     # check multiprocessing results
-    total_label_count = 0
-    label_file_count = 0
-    no_label_file_count = 0
     image_fail_count = 0
 
-    for mp_result in mp_results:
-        if mp_result > 0:
-            total_label_count += mp_result
-            label_file_count += 1
-        elif mp_result == 0:
-            no_label_file_count += 1
-        elif mp_result == -1:
-            image_fail_count += 1
+    # get rid of image download failures and log them
+    input_images = list()
+    for image in mp_results:
+        if image is not None:
+            input_images.append(image)
         else:
-            print("WARNING: multiprocessing error : {}".format(mp_result))
+            image_fail_count += 1
+
+    # for mp_result in mp_results:
+    #     if mp_result > 0:
+    #         total_label_count += mp_result
+    #         label_file_count += 1
+    #     elif mp_result == 0:
+    #         no_label_file_count += 1
+    #     elif mp_result == -1:
+    #         image_fail_count += 1
+    #     else:
+    #         print("WARNING: multiprocessing error : {}".format(mp_result))
 
     # output results to screen
     print(f"\t - {image_count} images processed")
     print(f"\t\t - {image_fail_count} images FAILED to download")
+
+
+
+
+    total_label_count = 0
+    label_file_count = 0
+    no_label_file_count = 0
+
+
     print(f"\t - {total_label_count} labels imported")
 
     # get counts of missing parcels and addresses
@@ -156,7 +172,6 @@ def get_labels(coords):
 
     latitude = coords[0]
     longitude = coords[1]
-    model = coords[2]
 
     # download image
     image = get_image(latitude, longitude)
@@ -192,10 +207,10 @@ def get_labels(coords):
 
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
-def get_image(latitude, longitude):
+def get_image(coords):
 
-    url = "https://api.gic.org//images/ExtractImages/bluesky-ultra?mode=best&EPSG=4326&xcoordinate=151.14&ycoordinate=-33.85&width=640&height=640&zoom=18&AuthToken=62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71"
-    response = requests.get(url)
+    latitude = coords[0]
+    longitude = coords[1]
 
     try:
         response = wms.getmap(
