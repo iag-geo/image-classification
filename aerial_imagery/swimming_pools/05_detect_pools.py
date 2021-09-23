@@ -6,6 +6,7 @@ import psycopg2
 import psycopg2.extras
 import requests
 import torch
+import torch.nn as nn
 
 from datetime import datetime
 from owslib.wms import WebMapService
@@ -14,13 +15,8 @@ from psycopg2 import pool
 from psycopg2.extensions import AsIs
 from torch.multiprocessing import cpu_count, Pool, Process, set_start_method
 
-# required for CUDA multiprocessing
-try:
-    set_start_method("spawn", force=True)
-except RuntimeError:
-    pass
-
 # how many parallel processes to run
+# gpu_count = 4
 # cpu_count = int(cpu_count() * 0.5)
 cpu_count = 48  # cap it to stop CUDA out of memory errors (12 for 1 GPU, 48 for 4 GPUs)
 
@@ -56,19 +52,6 @@ image_height = image_width
 pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 
-# load trained pool model
-# model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
-#                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
-#                        source="local")
-
-
-model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
-                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
-                       source="local")
-# model = torch.hub.load("ultralytics/yolov5", "custom",
-#                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
-# , force_reload=True
-
 
 def main():
     start_time = datetime.now()
@@ -84,6 +67,21 @@ def main():
     pg_cur.execute(f"truncate table {label_table}")
     pg_cur.execute(f"truncate table {image_table}")
 
+    # model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
+    #                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt",
+    #                        source="local")
+
+    model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
+                           path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt",
+                           source="local")
+    # model = torch.hub.load("ultralytics/yolov5", "custom",
+    #                        path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt")
+    # , force_reload=True
+    # model= nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+    # model.to(device)
+    # model.share_memory()
+    # model = nn.DataParallel(model.cuda())
+
     # cycle through the map images starting top/left and going left then down to create job list
     job_list = list()
     image_count = 0
@@ -93,9 +91,17 @@ def main():
         longitude = x_min
         while longitude < x_max:
             image_count += 1
-            job_list.append([latitude, longitude])
+            job_list.append([latitude, longitude, model])
             longitude += width
         latitude -= height
+
+    # required for CUDA multiprocessing
+    set_start_method("spawn", force=True)
+
+    # load trained pool model to run on all GPUs or CPUs
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    print(f"{device} is available with {torch.cuda.device_count()} GPUs")
 
     mp_pool = Pool(cpu_count)
     mp_results = mp_pool.imap_unordered(get_labels, job_list)
@@ -150,6 +156,7 @@ def get_labels(coords):
 
     latitude = coords[0]
     longitude = coords[1]
+    model = coords[2]
 
     # download image
     image = get_image(latitude, longitude)

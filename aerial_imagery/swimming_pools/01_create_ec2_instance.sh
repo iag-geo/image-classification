@@ -21,7 +21,7 @@ echo "-------------------------------------------------------------------------"
 echo " Set temp local environment vars"
 echo "-------------------------------------------------------------------------"
 
-AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI
+AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI. Comment out the NVIDIA driver install in 02_remote_setup.sh if you are
 #INSTANCE_TYPE="m5d.12xlarge"
 #INSTANCE_TYPE="p3.2xlarge"  # not available to me but should be faster
 INSTANCE_TYPE="g4dn.12xlarge"
@@ -139,8 +139,12 @@ fi
 #
 #ssh -F ${SSH_CONFIG} -fNL 8888:${INSTANCE_IP_ADDRESS}:8888 ${INSTANCE_ID}
 
-# load EC2 variables
-sh ~/git/temp_ec2_vars.sh
+echo "-------------------------------------------------------------------------"
+echo " Login"
+echo "-------------------------------------------------------------------------"
+
+# ~/git/temp_ec2_vars.sh
+ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
 
 echo "-------------------------------------------------------------------------"
 duration=$SECONDS
@@ -155,4 +159,4 @@ echo "--------------------------------------------------------------------------
 #ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
 
 # load ec2 vars (for later on)
-# sh ~/git/temp_ec2_vars.sh
+# . ~/git/temp_ec2_vars.sh
