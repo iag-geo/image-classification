@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import psycopg2
 import psycopg2.extras
+import requests
 import torch
 
 from datetime import datetime
@@ -28,7 +29,15 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
+
+#GIC aerial imagery API token (expires every 12 hours)
+# gic_token = "62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71"
+
+# https://api.gic.org//images/ExtractImages/bluesky-ultra-oceania?mode=best&EPSG=4326&xcoordinate=151.14&ycoordinate=-33.85&width=640&height=640&zoom=18&AuthToken=62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71
+
+
 wms = WebMapService(wms_base_url)
+
 
 # coordinates of area to process
 x_min = 151.1331
@@ -142,7 +151,7 @@ def get_labels(coords):
         # # save labelled image whether it has any labels or not (for QA)
         # results.save(os.path.join(script_dir, "output"))  # or .show()
 
-        # export results to postgres
+        # export labels to postgres
         label_count = len(label_list)
         if label_count > 0:
             # # save labels
@@ -152,6 +161,9 @@ def get_labels(coords):
 
             import_label_to_postgres(latitude, longitude, label_list)
 
+        # export image polygon to Postgres
+        import_image_to_postgres(latitude, longitude, label_count)
+
         print(f"Image {latitude}, {longitude} has {label_count} pools : {datetime.now() - start_time}")
 
         return label_count
@@ -159,6 +171,10 @@ def get_labels(coords):
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
 def get_image(latitude, longitude):
+
+    url = "https://api.gic.org//images/ExtractImages/bluesky-ultra?mode=best&EPSG=4326&xcoordinate=151.14&ycoordinate=-33.85&width=640&height=640&zoom=18&AuthToken=62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71"
+    response = requests.get(url)
+
     # try:
     response = wms.getmap(
         layers=["0"],
@@ -280,8 +296,6 @@ def insert_row(table_name, row):
 
 
 def import_label_to_postgres(latitude, longitude, label_list):
-    label_count = 0
-
     # todo: fix this - the file name means nothing
     image_path = f"image_{latitude}_{longitude}.jpg"
 
@@ -301,7 +315,10 @@ def import_label_to_postgres(latitude, longitude, label_list):
         # insert into postgres
         insert_row(label_table,  label_row)
 
-        label_count += 1
+
+def import_image_to_postgres(latitude, longitude, label_count):
+    # todo: fix this - the file name means nothing
+    image_path = f"image_{latitude}_{longitude}.jpg"
 
     # import image bounds as polygons for reference
     x_max = longitude + width
