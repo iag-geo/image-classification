@@ -139,13 +139,14 @@ fi
 #
 #ssh -F ${SSH_CONFIG} -fNL 8888:${INSTANCE_IP_ADDRESS}:8888 ${INSTANCE_ID}
 
+# load EC2 variables
+sh ~/git/temp_ec2_vars.sh
+
 echo "-------------------------------------------------------------------------"
 duration=$SECONDS
 echo " End time : $(date)"
 echo " Build took $((duration / 60)) mins"
 echo "----------------------------------------------------------------------------------------------------------------"
-
-sh ~/git/temp_ec2_vars.sh
 
 
 # HANDY STUFF BELOW

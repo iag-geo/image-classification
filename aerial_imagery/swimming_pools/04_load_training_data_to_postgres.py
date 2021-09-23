@@ -14,8 +14,10 @@ from psycopg2.extensions import AsIs
 cpu_count = int(multiprocessing.cpu_count() * 0.9)
 
 # input images
-search_path = "/Users/s57405/Downloads/Swimming Pools with Labels/*/*.tif"
-# search_path = "/home/ec2-user/training-data/images/*.tif"
+# search_path = f"{os.path.expanduser('~')}/Downloads/Swimming Pools with Labels/*/*.tif"
+# label_path = None
+search_path = f"{os.path.expanduser('~')}/datasets/pool/images/train2017/*.tif"
+label_path = f"{os.path.expanduser('~')}/datasets/pool/labels/train2017"
 
 # output tables
 label_table = "data_science.pool_training_labels"
@@ -125,7 +127,12 @@ def get_image(file_path):
 
     label_file_path = os.path.split(os.path.abspath(file_path))
 
-    output["label_file"] = os.path.join(label_file_path[0] + "_labels", label_file_path[1].replace(".tif", ".txt"))
+    # todo: get rid of lazy condition to allow for testing locally and remotely
+    if label_path is None:
+        output["label_file"] = os.path.join(label_file_path[0] + "_labels", label_file_path[1].replace(".tif", ".txt"))
+    else:
+        output["label_file"] = os.path.join(label_path, label_file_path[1].replace(".tif", ".txt"))
+    # print(output["label_file"])
 
     return output
 
