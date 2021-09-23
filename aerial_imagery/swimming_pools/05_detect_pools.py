@@ -221,31 +221,31 @@ def get_image(coords):
     latitude = coords[0]
     longitude = coords[1]
 
-    try:
-        response = wms.getmap(
-            layers=["0"],
-            srs='EPSG:4326',
-            bbox=(longitude, latitude - height, longitude + width, latitude),
-            format="image/jpeg",
-            size=(image_width, image_height)
-        )
+    # try:
+    response = wms.getmap(
+        layers=["0"],
+        srs='EPSG:4326',
+        bbox=(longitude, latitude - height, longitude + width, latitude),
+        format="image/jpeg",
+        size=(image_width, image_height)
+    )
 
-        image_file = io.BytesIO(response.read())
-        image = Image.open(image_file)
-        # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
+    image_file = io.BytesIO(response.read())
+    image = Image.open(image_file)
+    # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-        # convert image to Tensor
-        image_tensor = transforms.PILToTensor(image)
+    # convert image to Tensor
+    image_tensor = transforms.PILToTensor()(image)
 
-        # export image polygon to Postgres
-        import_image_to_postgres(latitude, longitude)
+    # export image polygon to Postgres
+    import_image_to_postgres(latitude, longitude)
 
-        return [latitude, longitude], image_tensor
+    return [latitude, longitude], image_tensor
 
-    except:
-        # probably timed out
-        print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
-        return None
+    # except:
+    #     # probably timed out
+    #     print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
+    #     return None
 
 
 def make_wkt_point(x_centre, y_centre):
