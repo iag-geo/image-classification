@@ -30,13 +30,19 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 wms = WebMapService(wms_base_url)
 
-# coordinates of area to process
-x_min = 151.1331
-y_min = -33.8912
-# x_max = 151.1431
-# y_max = -33.8812
-x_max = 151.1703
-y_max = -33.8672
+# coordinates of area to process (Inner West to Upper North Shore)
+x_min = 151.05760
+y_min = -33.90748
+x_max = 151.26752
+y_max = -33.74470
+
+# # coordinates of area to process (Inner West section)
+# x_min = 151.1331
+# y_min = -33.8912
+# # x_max = 151.1431
+# # y_max = -33.8812
+# x_max = 151.1703
+# y_max = -33.8672
 
 # create images with the same pixel width & height as the training data
 width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
