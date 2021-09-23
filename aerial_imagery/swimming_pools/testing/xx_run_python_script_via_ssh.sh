@@ -6,7 +6,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 . ${GIT_HOME}/temp_ec2_vars.sh
 
 # copy and run python script remotely
-FILENAME="04_load_training_data_to_postgres.py"
+FILENAME="05_detect_pools.py"
 
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/${FILENAME} ${USER}@${INSTANCE_ID}:~/
 ssh -F ${SSH_CONFIG} ${INSTANCE_ID} "conda activate yolov5; python3 ${FILENAME}"

@@ -13,7 +13,8 @@ from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-from torch.multiprocessing import set_start_method
+# from torch.multiprocessing import set_start_method
+from torchvision import transforms
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -53,9 +54,8 @@ if platform.system() == "Darwin":
     model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
 
     # how many parallel processes to run
-    cuda_gpu_count = 0
-    # cpu_count = int(cpu_count() * 0.8)
-    cpu_count = 16
+    # process_count = int(process_count() * 0.8)
+    process_count = 16
 else:
     pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 
@@ -64,12 +64,15 @@ else:
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
     # how many parallel processes to run
-    cuda_gpu_count = 4
-    # cpu_count = int(cpu_count() * 0.8)
-    cpu_count = 48
+
+    # process_count = int(process_count() * 0.8)
+    process_count = 48
+
+# get count of CUDA enabled GPUs
+cuda_gpu_count = torch.cuda.device_count()
 
 # create postgres connection pool
-pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
+pg_pool = psycopg2.pool.SimpleConnectionPool(1, process_count, pg_connect_string)
 
 
 def main():
@@ -100,7 +103,7 @@ def main():
             longitude += width
         latitude -= height
 
-    mp_pool = multiprocessing.Pool(cpu_count)
+    mp_pool = multiprocessing.Pool(process_count)
     mp_results = mp_pool.imap_unordered(get_image, job_list)
     mp_pool.close()
     mp_pool.join()
@@ -118,13 +121,16 @@ def main():
         else:
             image_fail_count += 1
 
+    # convert list of image tensors into a tensor (to enable multi-GPU processing)
+    tensor_of_tensors = torch.stack((image_list))
+
     # show image download results
     print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
     print(f"\t\t - {image_fail_count} images FAILED to download")
     start_time = datetime.now()
 
     # process all images in one hit
-    start_time, total_label_count = get_labels(image_list, coords_list)
+    start_time, total_label_count = get_labels(tensor_of_tensors, coords_list)
     print(f"\t - {total_label_count} labels imported : {datetime.now() - start_time}")
     # start_time = datetime.now()
 
@@ -155,9 +161,9 @@ def main():
 def get_labels(image_list, coords_list):
     start_time = datetime.now()
 
-    if cuda_gpu_count > 1:
-        # required for torch multiprocessing with CUDA
-        set_start_method("spawn", force=True)
+    # if cuda_gpu_count > 1:
+    #     # required for torch multiprocessing with CUDA
+    #     set_start_method("spawn", force=True)
 
     # load trained pool model to run on all GPUs or CPUs
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -166,10 +172,9 @@ def get_labels(image_list, coords_list):
     model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
 
     if cuda_gpu_count > 1:
-        # model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
-        model = nn.DataParallel(model.cuda())
+        model = nn.DataParallel(model)
         model.to(device)
-        # model.share_memory()
+        image_list = image_list.to(device)
 
     # Run inference
     results = model(image_list)
@@ -229,10 +234,13 @@ def get_image(coords):
         image = Image.open(image_file)
         # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
+        # convert image to Tensor
+        image_tensor = transforms.PILToTensor(image)
+
         # export image polygon to Postgres
         import_image_to_postgres(latitude, longitude)
 
-        return [latitude, longitude], image
+        return [latitude, longitude], image_tensor
 
     except:
         # probably timed out

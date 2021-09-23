@@ -140,13 +140,6 @@ fi
 #ssh -F ${SSH_CONFIG} -fNL 8888:${INSTANCE_IP_ADDRESS}:8888 ${INSTANCE_ID}
 
 echo "-------------------------------------------------------------------------"
-echo " Login"
-echo "-------------------------------------------------------------------------"
-
-# ~/git/temp_ec2_vars.sh
-ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
-
-echo "-------------------------------------------------------------------------"
 duration=$SECONDS
 echo " End time : $(date)"
 echo " Build took $((duration / 60)) mins"

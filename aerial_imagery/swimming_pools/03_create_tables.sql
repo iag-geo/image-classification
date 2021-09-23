@@ -32,7 +32,7 @@ ALTER TABLE data_science.pool_training_labels CLUSTER ON pool_training_labels_ge
 drop table if exists data_science.pool_training_images;
 create table data_science.pool_training_images (
     file_path text NOT NULL,
-    label_count smallint NOT NULL,
+    label_count smallint NULL,
     width double precision NOT NULL,
     height double precision NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
@@ -70,7 +70,7 @@ ALTER TABLE data_science.pool_labels CLUSTER ON pool_labels_geom_idx;
 drop table if exists data_science.pool_images;
 create table data_science.pool_images (
     file_path text NOT NULL,
-    label_count smallint NOT NULL,
+    label_count smallint NULL,
     width double precision NOT NULL,
     height double precision NOT NULL,
     geom geometry(Polygon,4283) NOT NULL
