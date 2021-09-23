@@ -12,6 +12,13 @@ from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
+from torch.multiprocessing import Pool, Process, set_start_method
+
+# required for CUDA multiprocessing
+try:
+    set_start_method('spawn')
+except RuntimeError:
+    pass
 
 # how many parallel processes to run
 cpu_count = int(multiprocessing.cpu_count() * 0.9)
@@ -60,7 +67,7 @@ pg_pool = psycopg2.pool.SimpleConnectionPool(1, cpu_count, pg_connect_string)
 # model = torch.hub.load(f"{os.path.expanduser('~')}/git/yolov5", "custom",
 #                        path=f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt", source="local")
 model = torch.hub.load(f"{os.path.expanduser('~')}/yolov5", "custom",
-                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt", source="local")
+                       path=f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt", source="local", force_reload=True)
 
 def main():
     start_time = datetime.now()
@@ -89,7 +96,7 @@ def main():
             longitude += width
         latitude -= height
 
-    mp_pool = multiprocessing.Pool(cpu_count)
+    mp_pool = Pool(cpu_count)
     mp_results = mp_pool.imap_unordered(get_labels, job_list)
     mp_pool.close()
     mp_pool.join()
@@ -98,6 +105,7 @@ def main():
     total_label_count = 0
     label_file_count = 0
     no_label_file_count = 0
+    image_fail_count = 0
 
     for mp_result in mp_results:
         if mp_result > 0:
@@ -105,11 +113,14 @@ def main():
             label_file_count += 1
         elif mp_result == 0:
             no_label_file_count += 1
+        elif mp_result == 0:
+            image_fail_count += 1
         else:
             print("WARNING: multiprocessing error : {}".format(mp_result))
 
     # output results to screen
     print(f"\t - {image_count} images processed")
+    print(f"\t\t - {image_fail_count} images FAILED to download")
     print(f"\t - {total_label_count} labels imported")
 
     # get counts of missing parcels and addresses
@@ -166,8 +177,10 @@ def get_labels(coords):
         import_image_to_postgres(latitude, longitude, label_count)
 
         print(f"Image {latitude}, {longitude} has {label_count} pools : {datetime.now() - start_time}")
+    else:
+        label_count = -1
 
-        return label_count
+    return label_count
 
 
 # downloads images from a WMS service and returns a PIL image (note: coords are top/left)
@@ -176,25 +189,25 @@ def get_image(latitude, longitude):
     url = "https://api.gic.org//images/ExtractImages/bluesky-ultra?mode=best&EPSG=4326&xcoordinate=151.14&ycoordinate=-33.85&width=640&height=640&zoom=18&AuthToken=62d0513f3a3e0b63992f630caf6b414a83f8c51e830ce70a4d05afba4e44de5bfed588676e5e735fea4f21913799b2a0f914a2592b34d0476594cd57868fda3e888406f1217f5d962a061735b0c847a1523dddfe98841d71"
     response = requests.get(url)
 
-    # try:
-    response = wms.getmap(
-        layers=["0"],
-        srs='EPSG:4326',
-        bbox=(longitude, latitude - height, longitude + width, latitude),
-        format="image/jpeg",
-        size=(image_width, image_height)
-    )
+    try:
+        response = wms.getmap(
+            layers=["0"],
+            srs='EPSG:4326',
+            bbox=(longitude, latitude - height, longitude + width, latitude),
+            format="image/jpeg",
+            size=(image_width, image_height)
+        )
 
-    image_file = io.BytesIO(response.read())
-    image = Image.open(image_file)
-    # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
+        image_file = io.BytesIO(response.read())
+        image = Image.open(image_file)
+        # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-    return image
+        return image
 
-    # except:
-    #     # probably timed out
-    #     print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
-    #     return None
+    except:
+        # probably timed out
+        print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
+        return None
 
 
 def make_wkt_point(x_centre, y_centre):
