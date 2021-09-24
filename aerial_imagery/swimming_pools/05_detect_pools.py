@@ -10,21 +10,20 @@
 import aiohttp
 import asyncio
 import io
-# import multiprocessing
 import os
 import platform
 import psycopg2
 import psycopg2.extras
-import requests
 import torch
-# import torch.nn as nn
 
 from datetime import datetime
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
-# TODO: add arguments to script to get rid of the hard coding below
+# TODO:
+#   - add arguments to script to get rid of the hard coding below
+#   - add logging
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -266,7 +265,7 @@ def get_labels(job):
 
         total_image_fail_count += image_fail_count
 
-        print(f"\t - images downloaded : GPU/CPU {gpu_number} : group {i} : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} : images downloaded   : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # run inference
@@ -276,7 +275,7 @@ def get_labels(job):
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-        print(f"\t - pool detection done : GPU/CPU {gpu_number} : group {i} : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} : pool detection done : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # step through each group of results and export to database
