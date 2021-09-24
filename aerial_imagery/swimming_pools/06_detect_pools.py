@@ -308,7 +308,7 @@ def get_labels(job):
             j += 1
 
         # print(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
-        print(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time}")
+        print(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {total_label_count} labels detected")
 
     return total_label_count, total_image_fail_count
 
