@@ -63,6 +63,9 @@ if platform.system() == "Darwin":
     # how many parallel processes to run
     # process_count = int(process_count() * 0.8)
     process_count = 16
+
+    # process images in chunks to manage memory usage
+    image_limit = 400  # roughly 14Gb RAM for this model
 else:
     pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 
@@ -74,6 +77,10 @@ else:
 
     # process_count = int(process_count() * 0.8)
     process_count = 64
+
+    # process images in chunks to manage memory usage
+    image_limit = 400  # roughly 14Gb RAM for this model
+
 
 # get count of CUDA enabled GPUs
 cuda_gpu_count = torch.cuda.device_count()
@@ -180,46 +187,76 @@ def get_labels(image_list, coords_list):
     #     model.to(device)
     #     image_list = image_list.to(device)
 
-    # Run inference (one image at a time for debugging
-    all_labels_list = list()
+    # Run inference after splitting images into groups to be processed (to control memory usage)
+
+    image_groups = list()
+    image_group = list()
+    coords_groups = list()
+    coords_group = list()
+    i = 1
 
     for image in image_list:
-        results = model(image)
-        # labels = results.xyxy[0].tolist()
-        all_labels_list.append(results.xyxy[0].tolist())
+        if i > image_limit:
+            image_groups.append(image_group)
+            image_group = list()
+            coords_groups.append(coords_group)
+            coords_group = list()
+            i = 0
 
+        image_group.append(image)
+        coords_group.append(image)
+
+        i += 1
+
+    if len(image_group) > 0:
+        image_groups.append(image_group)
+        coords_groups.append(coords_group)
+
+    # don't need these anymore
+    del image_list
+    del coords_list
+
+    tensor_labels_list = list()
+
+    # run inference
+    for group in image_groups:
+        results = model(group)
+        tensor_labels_list.append(results.xyxy)
 
     print(f"\t - pool detection done : {datetime.now() - start_time}")
     start_time = datetime.now()
 
     i = 0
+    j = 0
     total_label_count = 0
 
-    for label_list in all_labels_list:
-        # label_list = tensor_label.tolist()
+    for tensor_labels in tensor_labels_list:
+        for tensor_label in tensor_labels:
+            label_list = tensor_label.tolist()
 
-        # # save labelled image whether it has any labels or not (for QA)
-        # results.save(os.path.join(script_dir, "output"))  # or .show()
+            # # save labelled image whether it has any labels or not (for QA)
+            # results.save(os.path.join(script_dir, "output"))  # or .show()
 
-        # export labels to postgres
-        label_count = len(label_list)
-        if label_count > 0:
-            total_label_count += label_count
+            # export labels to postgres
+            label_count = len(label_list)
+            if label_count > 0:
+                total_label_count += label_count
 
-            # # save labels
-            # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
-            # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
-            # f.close()
+                # # save labels
+                # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
+                # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
+                # f.close()
 
-            # get corresponding coords of image
-            latitude = coords_list[i][0]
-            longitude = coords_list[i][1]
+                # get corresponding coords of image
+                latitude = coords_groups[j][i][0]
+                longitude = coords_groups[j][i][1]
 
-            import_label_to_postgres(latitude, longitude, label_list)
+                import_label_to_postgres(latitude, longitude, label_list)
 
-            # print(f"Image {latitude}, {longitude} has {label_count} pools")
+                # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
-        i += 1
+            i += 1
+        j += 1
 
     return start_time, total_label_count
 
