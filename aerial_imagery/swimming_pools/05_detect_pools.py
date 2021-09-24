@@ -131,35 +131,30 @@ def main():
         latitude -= height
 
     # -----------------------------------------------------------------------------------------------------------------
-    # Download the images into memory
+    # Download images into memory
     # ----------------------------------------------------------------------------------------------------------------
 
     # download asynchronously in parallel
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(async_get_image(job_list))
+    image_download_list = loop.run_until_complete(async_get_images(job_list))
 
-    # mp_pool = multiprocessing.Pool(max_concurrent_downloads)
-    # mp_results = mp_pool.imap_unordered(get_image, job_list)
-    # mp_pool.close()
-    # mp_pool.join()
-    #
-    # # check multiprocessing results
-    # image_fail_count = 0
-    #
-    # # get rid of image download failures and log them
-    # coords_list = list()
-    # image_list = list()
-    # for mp_result in mp_results:
-    #     if mp_result is not None:
-    #         coords_list.append(mp_result[0])
-    #         image_list.append(mp_result[1])
-    #     else:
-    #         image_fail_count += 1
-    #
-    # # show image download results
-    # print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
-    # print(f"\t\t - {image_fail_count} images FAILED to download")
-    # start_time = datetime.now()
+    # check download results
+    image_fail_count = 0
+
+    # get rid of image download failures and log them
+    coords_list = list()
+    image_list = list()
+    for image_download in image_download_list:
+        if image_download is not None:
+            coords_list.append(image_download[0])
+            image_list.append(image_download[1])
+        else:
+            image_fail_count += 1
+
+    # show image download results
+    print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
+    print(f"\t\t - {image_fail_count} images FAILED to download")
+    start_time = datetime.now()
 
     # process all images in one hit
     start_time, total_label_count = get_labels(image_list, coords_list)
@@ -285,8 +280,9 @@ def get_labels(image_list, coords_list):
     return start_time, total_label_count
 
 
-
 async def async_get_images(job_list):
+    """Sets up the asynchronous downloading of images in parallel"""
+
     conn = aiohttp.TCPConnector(limit=max_concurrent_downloads)
 
     async with aiohttp.ClientSession(connector=conn) as session:
@@ -294,8 +290,9 @@ async def async_get_images(job_list):
         process_list = []
         for coords in job_list:
             process_list.append(get_image(session, coords))
-        # execute them all at once
-        await asyncio.gather(*process_list)
+
+        # execute them all at once and return list of downloading images
+        return await asyncio.gather(*process_list)
 
 
 async def get_image(session, coords):
@@ -331,10 +328,10 @@ async def get_image(session, coords):
 
     try:
         async with session.get(wms_base_url, params=params) as response:
-            response = await response
+            response = await response.read()
         # response = requests.get(wms_base_url, params=params)
 
-        image_file = io.BytesIO(response.content)
+        image_file = io.BytesIO(response)
         image = Image.open(image_file)
 
         # DEBUG: save image to disk
