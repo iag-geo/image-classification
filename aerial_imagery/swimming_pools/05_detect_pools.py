@@ -7,17 +7,20 @@
  License: Apache v2
 -----------------------------------------------------------------------------------------------------------------"""
 
+# import aiohttp
+# import asyncio
 import io
 import multiprocessing
 import os
 import platform
 import psycopg2
 import psycopg2.extras
+import requests
 import torch
 # import torch.nn as nn
 
 from datetime import datetime
-from owslib.wms import WebMapService
+# from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
@@ -38,7 +41,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
-wms = WebMapService(wms_base_url)
+# wms = WebMapService(wms_base_url)
 
 # # coordinates of area to process (Sydney - Inner West to Upper North Shore)
 # # ~17k image downloads take ~25 mins via IAG proxy on EC2
@@ -289,16 +292,26 @@ def get_image(coords):
     latitude = coords[0]
     longitude = coords[1]
 
-    try:
-        response = wms.getmap(
-            layers=["0"],
-            srs='EPSG:4326',
-            bbox=(longitude, latitude - height, longitude + width, latitude),
-            format="image/jpeg",
-            size=(image_width, image_height)
-        )
+    # try:
+        # response = wms.getmap(
+        #     layers=["0"],
+        #     srs='EPSG:4326',
+        #     bbox=(longitude, latitude - height, longitude + width, latitude),
+        #     format="image/jpeg",
+        #     size=(image_width, image_height)
+        # )
 
-        image_file = io.BytesIO(response.read())
+    try:
+        # async with session.post(routing_url, data=json_payload) as response:
+        #     response_dict = await response.json()
+        # r = await session.post(routing_url, data=json_payload)
+
+        # TODO: clean this up
+        url = f"{wms_base_url}?request=GetMap&service=WMS&version=1.3.0&bbox={longitude},{latitude - height},{longitude + width},{latitude}&layers=0&styles=&crs=epsg%3A4326&width={image_width}&height={image_height}&format=image/jpeg"
+
+        response = requests.get(url)
+
+        image_file = io.BytesIO(response.content)
         image = Image.open(image_file)
 
         # DEBUG: save image to disk
