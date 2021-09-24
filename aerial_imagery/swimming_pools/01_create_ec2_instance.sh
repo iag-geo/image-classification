@@ -24,7 +24,7 @@ echo "-------------------------------------------------------------------------"
 AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI. Comment out the NVIDIA driver install in 02_remote_setup.sh if you are
 #INSTANCE_TYPE="m5d.12xlarge"
 #INSTANCE_TYPE="p3.2xlarge"  # not available to me but should be faster
-INSTANCE_TYPE="g4dn.8xlarge"
+INSTANCE_TYPE="g4dn.12xlarge"
 
 USER="ec2-user"
 
@@ -109,7 +109,8 @@ scp -F ${SSH_CONFIG} -r ${HOME}/.aws/credentials ${USER}@${INSTANCE_ID}:~/.aws/c
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/02_remote_setup.sh ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/03_create_tables.sql ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/04_load_training_data_to_postgres.py ${USER}@${INSTANCE_ID}:~/
-scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/05_detect_pools.py ${USER}@${INSTANCE_ID}:~/
+scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/05_train_model.sh ${USER}@${INSTANCE_ID}:~/
+scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/06_detect_pools.py ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/pool.yaml ${USER}@${INSTANCE_ID}:~/
 
 # install packages & environment and import data

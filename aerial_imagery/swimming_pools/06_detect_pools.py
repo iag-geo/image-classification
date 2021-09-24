@@ -21,6 +21,8 @@ from datetime import datetime
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
+# from torchvision import transforms
+
 
 # TODO:
 #   - add arguments to script to get rid of the hard coding below
@@ -218,27 +220,6 @@ def split_list(lst, n):
         yield lst[i:i + n]
 
 
-def split_jobs_by_limit(job_list):
-
-    job_groups = list()
-    job_group = list()
-    i = 1
-
-    for job in job_list:
-        if i > image_limit:
-            job_groups.append(job_group)
-            job_group = list()
-            i = 1
-
-        job_group.append(job)
-
-        i += 1
-
-    job_groups.append(job_group)
-
-    return job_groups
-
-
 def get_labels(job):
 
     job_groups = job[0]
@@ -373,12 +354,18 @@ async def get_image(session, coords):
     params["format"] = "image/jpeg"
 
     try:
+        # download image
         async with session.get(wms_base_url, params=params) as response:
             response = await response.read()
-        # response = requests.get(wms_base_url, params=params)
 
+        # convert response to a Pillow image
         image_file = io.BytesIO(response)
         image = Image.open(image_file)
+
+        # TESTING - need to convert images to tensors to enable multi-GPU processing.
+        # Note: YOLOv5 authors claim multi-GPU can't be done.
+        # tensor_image = transforms.ToTensor()(image).unsqueeze_(0)
+        # # print(tensor_image.shape)
 
         # DEBUG: save image to disk
         # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
