@@ -10,7 +10,7 @@
 import aiohttp
 import asyncio
 import io
-import multiprocessing
+# import multiprocessing
 import os
 import platform
 import psycopg2
@@ -23,7 +23,6 @@ from datetime import datetime
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-# from torch.multiprocessing import set_start_method
 
 # TODO: add arguments to script to get rid of the hard coding below
 
@@ -79,14 +78,18 @@ else:
     yolo_home = f"{os.path.expanduser('~')}/yolov5"
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
-# how many parallel processes to run (only used for downloading images, hence can use all CPUs safely)
-max_concurrent_downloads = multiprocessing.cpu_count()
-
 # process images in chunks to manage memory usage
 image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by this script)
 
+# how many parallel processes to run (only used for downloading images, hence can use 2x CPUs safely)
+max_concurrent_downloads = torch.multiprocessing.cpu_count() * 2
+
 # get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
+
+# alter concurrent download limit if using multiple GPUs
+if cuda_gpu_count > 1:
+    max_concurrent_downloads = int(float(max_concurrent_downloads) / float(cuda_gpu_count))
 
 # create postgres connection pool
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_concurrent_downloads, pg_connect_string)
@@ -108,51 +111,41 @@ def main():
     pg_cur.execute(f"truncate table {image_table}")
 
     # -----------------------------------------------------------------------------------------------------------------
-    # Create the multiprocessing job list to download the images
-    # Cycle through the map image top/left coordinates going left then down
+    # Create a multiprocessing job list to download and label the images using available GPUs (or CPUs if no GPUs)
     # -----------------------------------------------------------------------------------------------------------------
 
-    job_list = list()
-    image_count = 0
-    latitude = input_y_max
+    image_count, jobs_by_gpu = get_jobs()
 
-    while latitude > input_y_min:
-        longitude = input_x_min
-        while longitude < input_x_max:
-            image_count += 1
-            job_list.append([latitude, longitude])
-            longitude += width
-        latitude -= height
+    if cuda_gpu_count > 1:
+        # required for torch multiprocessing on GPUs
+        torch.multiprocessing.set_start_method("spawn", force=True)
 
-    # -----------------------------------------------------------------------------------------------------------------
-    # Download images into memory
-    # ----------------------------------------------------------------------------------------------------------------
+        # assign a GPU number to each set of job group (1 set of groups per GPU)
+        mp_job_list = list()
+        gpu_number = 0
+        for job_groups in jobs_by_gpu:
+            mp_job_list.append([job_groups, gpu_number])
+            gpu_number += 1
 
-    # download asynchronously in parallel
-    loop = asyncio.get_event_loop()
-    image_download_list = loop.run_until_complete(async_get_images(job_list))
+        mp_pool = torch.multiprocessing.Pool(cuda_gpu_count)
+        mp_results = mp_pool.imap_unordered(get_labels, mp_job_list)
+        mp_pool.close()
+        mp_pool.join()
 
-    # check download results
-    image_fail_count = 0
+        total_label_count = 0
+        total_image_fail_count = 0
 
-    # get rid of image download failures and log them
-    coords_list = list()
-    image_list = list()
-    for image_download in image_download_list:
-        if image_download is not None:
-            coords_list.append(image_download[0])
-            image_list.append(image_download[1])
-        else:
-            image_fail_count += 1
+        for label_count, image_fail_count in mp_results:
+            total_label_count += label_count
+            total_image_fail_count += image_fail_count
+
+    else:
+        total_label_count, total_image_fail_count = get_labels([jobs_by_gpu[0], 0])
 
     # show image download results
     print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
-    print(f"\t\t - {image_fail_count} images FAILED to download")
-    start_time = datetime.now()
-
-    # process all images in one hit
-    start_time, total_label_count = get_labels(image_list, coords_list)
-    print(f"\t - {total_label_count} labels imported : {datetime.now() - start_time}")
+    print(f"\t\t - {total_image_fail_count} images FAILED to download")
+    print(f"\t - {total_label_count} labels imported")
     # start_time = datetime.now()
 
     # label_file_count = 0
@@ -179,73 +172,114 @@ def main():
     print(f"FINISHED : swimming pool labelling : {datetime.now() - full_start_time}")
 
 
-def get_labels(image_list, coords_list):
-    start_time = datetime.now()
+def get_jobs():
+    """Create job list by cycling through the map image top/left coordinates going left then down.
+    Then split jobs based on:
+         a. the number of GPUs being used (if any); AND
+         b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
 
+    # create job list
+    job_list = list()
+    image_count = 0
+    latitude = input_y_max
+
+    while latitude > input_y_min:
+        longitude = input_x_min
+        while longitude < input_x_max:
+            image_count += 1
+            job_list.append([latitude, longitude])
+            longitude += width
+        latitude -= height
+
+    # split jobs by number of GPUs and limit per job group
+    jobs_by_gpu = list()
+
+    # TODO: multi gpus
     # if cuda_gpu_count > 1:
-    #     # required for torch multiprocessing with CUDA
-    #     set_start_method("spawn", force=True)
+    #
+    #
+    #
+    # else:
+    job_groups = split_jobs_by_limit(job_list)
+    jobs_by_gpu.append(job_groups)
 
-    # load trained pool model to run on all GPUs or CPUs
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"{device} is available with {torch.cuda.device_count()} GPUs")
+    return image_count, jobs_by_gpu
 
-    model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
 
-    # if cuda_gpu_count > 1:
-    #     model = nn.DataParallel(model)
-    #     model.to(device)
-    #     image_list = image_list.to(device)
+def split_jobs_by_limit(job_list):
 
-    # Run inference after splitting images into groups to be processed (to control memory usage)
-
-    image_groups = list()
-    image_group = list()
-    coords_groups = list()
-    coords_group = list()
+    job_groups = list()
+    job_group = list()
     i = 1
-    j = 0
 
-    for image in image_list:
+    for job in job_list:
         if i > image_limit:
-            image_groups.append(image_group)
-            image_group = list()
-            coords_groups.append(coords_group)
-            coords_group = list()
+            job_groups.append(job_group)
+            job_group = list()
             i = 1
 
-        image_group.append(image)
-        coords_group.append(coords_list[j])
+        job_group.append(job)
 
         i += 1
-        j += 1
 
-    if len(image_group) > 0:
-        image_groups.append(image_group)
-        coords_groups.append(coords_group)
+    job_groups.append(job_group)
 
-    # don't need these anymore
-    del image_list
-    del coords_list
+    return job_groups
 
-    tensor_labels_list = list()
 
-    # run inference
-    for group in image_groups:
-        results = model(group)
-        tensor_labels_list.append(results.xyxy)
+def get_labels(job):
+    start_time = datetime.now()
+
+    job_groups = job[0]
+    gpu_number = job[1]
+
+    # load trained model to run on selected GPU (or CPUs)
+    if torch.cuda.is_available():
+        device = torch.device(f"cuda:{gpu_number}")
+    else:
+        device = torch.device("cpu")
+
+    model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
+    model.to(device)
+
+    total_image_fail_count = 0
+    total_label_count = 0
+    i = 0
+
+    for job_group in job_groups:
+        # Download images into memory, asynchronously in parallel
+        loop = asyncio.get_event_loop()
+        image_download_list = loop.run_until_complete(async_get_images(job_group))
+
+        # check download results
+        image_fail_count = 0
+
+        # get rid of image download failures and count them
+        coords_list = list()
+        image_list = list()
+        for image_download in image_download_list:
+            if image_download is not None:
+                coords_list.append(image_download[0])
+                image_list.append(image_download[1])
+            else:
+                image_fail_count += 1
+
+        total_image_fail_count += image_fail_count
+
+        print(f"\t - images downloaded : GPU/CPU {gpu_number} : group {i} : {datetime.now() - start_time}")
+        start_time = datetime.now()
+
+        # run inference
+        results = model(image_list)
+        tensor_labels = results.xyxy
 
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-    print(f"\t - pool detection done : {datetime.now() - start_time}")
-    start_time = datetime.now()
+        print(f"\t - pool detection done : GPU/CPU {gpu_number} : group {i} : {datetime.now() - start_time}")
+        start_time = datetime.now()
 
-    i = 0
-    total_label_count = 0
-
-    # step through each group of results and export to database
-    for tensor_labels in tensor_labels_list:
+        # step through each group of results and export to database
         j = 0
 
         for tensor_label in tensor_labels:
@@ -256,14 +290,13 @@ def get_labels(image_list, coords_list):
                 total_label_count += label_count
 
                 # get corresponding coords of image (used to create ID to match
-                latitude = coords_groups[i][j][0]
-                longitude = coords_groups[i][j][1]
+                latitude = coords_list[j][0]
+                longitude = coords_list[j][1]
 
                 # DEBUG: save labels to disk
                 # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
                 # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
                 # f.close()
-
                 # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
                 import_labels_to_postgres(latitude, longitude, label_list)
@@ -271,7 +304,7 @@ def get_labels(image_list, coords_list):
             j += 1
         i += 1
 
-    return start_time, total_label_count
+    return total_label_count, total_image_fail_count
 
 
 async def async_get_images(job_list):
