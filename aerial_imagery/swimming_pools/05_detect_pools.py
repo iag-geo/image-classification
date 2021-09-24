@@ -241,38 +241,38 @@ def get_labels(image_list, coords_list):
         results = model(group)
         tensor_labels_list.append(results.xyxy)
 
+        # DEBUG: save labelled images
+        # results.save(os.path.join(script_dir, "output"))
+
     print(f"\t - pool detection done : {datetime.now() - start_time}")
     start_time = datetime.now()
 
     i = 0
     total_label_count = 0
 
+    # step through each group of results and export to database
     for tensor_labels in tensor_labels_list:
         j = 0
 
         for tensor_label in tensor_labels:
             label_list = tensor_label.tolist()
 
-            # # save labelled image whether it has any labels or not (for QA)
-            # results.save(os.path.join(script_dir, "output"))  # or .show()
-
-            # export labels to postgres
             label_count = len(label_list)
             if label_count > 0:
                 total_label_count += label_count
 
-                # # save labels
+                # get corresponding coords of image (used to create ID to match
+                latitude = coords_groups[i][j][0]
+                longitude = coords_groups[i][j][1]
+
+                # DEBUG: save labels to disk
                 # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
                 # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
                 # f.close()
 
-                # get corresponding coords of image
-                latitude = coords_groups[i][j][0]
-                longitude = coords_groups[i][j][1]
+                # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
                 import_labels_to_postgres(latitude, longitude, label_list)
-
-                # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
             j += 1
         i += 1
@@ -328,17 +328,17 @@ def make_wkt_polygon(x_min, y_min, x_max, y_max):
 def convert_label_to_polygon(latitude, longitude, label):
     """Takes a detected label & converts it to centroid & boundary geometries for insertion into database
 
-    format of inference label files is:
-      - left pixel
-      - top pixel
-      - right pixel
-      - bottom pixel
-      - confidence (0.00 to 1.00)
-      - unknown (class? always 0.0)
+    format of label list is:
+      0 - left pixel
+      1 - top pixel
+      2 - right pixel
+      3 - bottom pixel
+      4 - confidence (0.00 to 1.00)
+      5 - unknown (class? always 0.0)
 
     e.g. [364.4530029296875, 480.5206298828125, 393.81219482421875, 512.9512939453125, 0.9367147088050842, 0.0]"""
 
-    # these picle coords need to be converted to percentages
+    # these pixel coords need to be converted to percentages
     label_left = float(label[0]) / float(image_width)
     label_top = float(label[1]) / float(image_height)
     label_right = float(label[2]) / float(image_width)
@@ -365,8 +365,7 @@ def convert_label_to_polygon(latitude, longitude, label):
 
 def get_parcel_and_address_ids(latitude, longitude):
     """Takes a label's point and gets its address and land parcel IDs from the database.
-
-    Returns None if no match (possible due to the vagaries of addressing & land titling"""
+    Returns None if no match (possible due to the vagaries of addressing & land titling)"""
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
