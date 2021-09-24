@@ -122,7 +122,7 @@ echo "-------------------------------------------------------------------------"
 echo " Installing additional Python packages"
 echo "-------------------------------------------------------------------------"
 
-echo "y" | conda install -c conda-forge rasterio psycopg2 postgis owslib
+echo "y" | conda install -c conda-forge rasterio psycopg2 postgis aiohttp
 #wandb
 
 echo "-------------------------------------------------------------------------"

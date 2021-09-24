@@ -7,8 +7,8 @@
  License: Apache v2
 -----------------------------------------------------------------------------------------------------------------"""
 
-# import aiohttp
-# import asyncio
+import aiohttp
+import asyncio
 import io
 import multiprocessing
 import os
@@ -20,7 +20,6 @@ import torch
 # import torch.nn as nn
 
 from datetime import datetime
-# from owslib.wms import WebMapService
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
@@ -41,7 +40,6 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
-# wms = WebMapService(wms_base_url)
 
 # # coordinates of area to process (Sydney - Inner West to Upper North Shore)
 # # ~17k image downloads take ~25 mins via IAG proxy on EC2
@@ -75,7 +73,7 @@ if platform.system() == "Darwin":
     model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
 
     # how many parallel processes to run (only used for downloading images, hence can double safely)
-    process_count = int(multiprocessing.cpu_count() * 2)
+    max_concurrent_downloads = int(multiprocessing.cpu_count() * 2)
 
     # process images in chunks to manage memory usage
     image_limit = 400  # roughly 13Gb RAM for this model
@@ -87,7 +85,7 @@ else:
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
     # how many parallel processes to run (only used for downloading images, hence can double safely)
-    process_count = int(multiprocessing.cpu_count() * 2)
+    max_concurrent_downloads = int(multiprocessing.cpu_count() * 2)
 
     # process images in chunks to manage memory usage
     image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by code)
@@ -97,7 +95,7 @@ else:
 cuda_gpu_count = torch.cuda.device_count()
 
 # create postgres connection pool
-pg_pool = psycopg2.pool.SimpleConnectionPool(1, process_count, pg_connect_string)
+pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_concurrent_downloads, pg_connect_string)
 
 
 def main():
@@ -136,28 +134,32 @@ def main():
     # Download the images into memory
     # ----------------------------------------------------------------------------------------------------------------
 
-    mp_pool = multiprocessing.Pool(process_count)
-    mp_results = mp_pool.imap_unordered(get_image, job_list)
-    mp_pool.close()
-    mp_pool.join()
+    # download asynchronously in parallel
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(async_get_image(job_list))
 
-    # check multiprocessing results
-    image_fail_count = 0
-
-    # get rid of image download failures and log them
-    coords_list = list()
-    image_list = list()
-    for mp_result in mp_results:
-        if mp_result is not None:
-            coords_list.append(mp_result[0])
-            image_list.append(mp_result[1])
-        else:
-            image_fail_count += 1
-
-    # show image download results
-    print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
-    print(f"\t\t - {image_fail_count} images FAILED to download")
-    start_time = datetime.now()
+    # mp_pool = multiprocessing.Pool(max_concurrent_downloads)
+    # mp_results = mp_pool.imap_unordered(get_image, job_list)
+    # mp_pool.close()
+    # mp_pool.join()
+    #
+    # # check multiprocessing results
+    # image_fail_count = 0
+    #
+    # # get rid of image download failures and log them
+    # coords_list = list()
+    # image_list = list()
+    # for mp_result in mp_results:
+    #     if mp_result is not None:
+    #         coords_list.append(mp_result[0])
+    #         image_list.append(mp_result[1])
+    #     else:
+    #         image_fail_count += 1
+    #
+    # # show image download results
+    # print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
+    # print(f"\t\t - {image_fail_count} images FAILED to download")
+    # start_time = datetime.now()
 
     # process all images in one hit
     start_time, total_label_count = get_labels(image_list, coords_list)
@@ -283,7 +285,20 @@ def get_labels(image_list, coords_list):
     return start_time, total_label_count
 
 
-def get_image(coords):
+
+async def async_get_images(job_list):
+    conn = aiohttp.TCPConnector(limit=max_concurrent_downloads)
+
+    async with aiohttp.ClientSession(connector=conn) as session:
+        # create job list to do asynchronously
+        process_list = []
+        for coords in job_list:
+            process_list.append(get_image(session, coords))
+        # execute them all at once
+        await asyncio.gather(*process_list)
+
+
+async def get_image(session, coords):
     """Downloads an image from a Web Map service (WMS) service into memory, saves it's bounds (as a polygon) to Postgres
        and returns a pillow image
 
@@ -315,13 +330,9 @@ def get_image(coords):
     params["format"] = "image/jpeg"
 
     try:
-        # async with session.post(routing_url, data=json_payload) as response:
-        #     response_dict = await response.json()
-        # r = await session.post(routing_url, data=json_payload)
-
-        # url = f"{wms_base_url}?request=GetMap&service=WMS&version=1.3.0&bbox={longitude},{latitude - height},{longitude + width},{latitude}&layers=0&styles=&crs=epsg%3A4326&width={image_width}&height={image_height}&format=image/jpeg"
-
-        response = requests.get(wms_base_url, params=params)
+        async with session.get(wms_base_url, params=params) as response:
+            response = await response
+        # response = requests.get(wms_base_url, params=params)
 
         image_file = io.BytesIO(response.content)
         image = Image.open(image_file)
@@ -329,7 +340,7 @@ def get_image(coords):
         # DEBUG: save image to disk
         # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
-        # export image polygon to Postgres
+        # export image polygon & metadata to Postgres
         import_image_to_postgres(latitude, longitude)
 
         return [latitude, longitude], image
