@@ -72,11 +72,6 @@ if platform.system() == "Darwin":
     yolo_home = f"{os.path.expanduser('~')}/git/yolov5"
     model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
 
-    # how many parallel processes to run (only used for downloading images, hence can double safely)
-    max_concurrent_downloads = int(multiprocessing.cpu_count() * 2)
-
-    # process images in chunks to manage memory usage
-    image_limit = 400  # roughly 13Gb RAM for this model
 else:
     pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 
@@ -84,12 +79,11 @@ else:
     yolo_home = f"{os.path.expanduser('~')}/yolov5"
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
-    # how many parallel processes to run (only used for downloading images, hence can double safely)
-    max_concurrent_downloads = int(multiprocessing.cpu_count() * 2)
+# how many parallel processes to run (only used for downloading images, hence can use all CPUs safely)
+max_concurrent_downloads = multiprocessing.cpu_count()
 
-    # process images in chunks to manage memory usage
-    image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by code)
-
+# process images in chunks to manage memory usage
+image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by this script)
 
 # get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
@@ -285,7 +279,7 @@ async def async_get_images(job_list):
 
     conn = aiohttp.TCPConnector(limit=max_concurrent_downloads)
 
-    async with aiohttp.ClientSession(connector=conn) as session:
+    async with aiohttp.ClientSession(connector=conn, trust_env=True) as session:
         # create job list to do asynchronously
         process_list = []
         for coords in job_list:
