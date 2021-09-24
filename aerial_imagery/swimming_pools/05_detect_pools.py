@@ -10,6 +10,7 @@
 import aiohttp
 import asyncio
 import io
+import math
 import os
 import platform
 import psycopg2
@@ -88,7 +89,7 @@ cuda_gpu_count = torch.cuda.device_count()
 
 # alter concurrent download limit if using multiple GPUs
 if cuda_gpu_count > 1:
-    max_concurrent_downloads = int(float(max_concurrent_downloads) / float(cuda_gpu_count))
+    max_concurrent_downloads = math.floor(max_concurrent_downloads / cuda_gpu_count)
 
 # create postgres connection pool
 pg_pool = psycopg2.pool.SimpleConnectionPool(1, torch.multiprocessing.cpu_count() * 2, pg_connect_string)
@@ -193,16 +194,27 @@ def get_jobs():
     # split jobs by number of GPUs and limit per job group
     jobs_by_gpu = list()
 
+    if cuda_gpu_count > 1:
+        # 1. split jobs into even groups by GPU
+        jobs_per_gpu = math.ceil(len(job_list) / cuda_gpu_count)
+        temp_job_groups = list(split_list(job_list, jobs_per_gpu))
 
-    # if cuda_gpu_count > 1:
-    #
-    #
-    #
-    # else:
-    job_groups = split_jobs_by_limit(job_list)
-    jobs_by_gpu.append(job_groups)
+        # 2. split each GPUs workload into "fits in memory" sized chunks
+        for temp_job_group in temp_job_groups:
+            job_groups = list(split_list(temp_job_group, image_limit))
+            jobs_by_gpu.append(job_groups)
+
+    else:
+        job_groups = list(split_list(job_list, image_limit))
+        jobs_by_gpu.append(job_groups)
 
     return image_count, jobs_by_gpu
+
+
+def split_list(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 def split_jobs_by_limit(job_list):
@@ -244,7 +256,7 @@ def get_labels(job):
 
     total_image_fail_count = 0
     total_label_count = 0
-    i = 0
+    i = 1
 
     # for each job group download images and detect labels on them
     for job_group in job_groups:
