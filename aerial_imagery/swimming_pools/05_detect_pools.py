@@ -301,15 +301,27 @@ def get_image(coords):
         #     size=(image_width, image_height)
         # )
 
+    # querystring parameters
+    params = dict()
+    params["service"] = "WMS"
+    params["request"] = "GetMap"
+    params["version"] = "1.3.0"
+    params["layers"] = 0
+    params["styles"] = ""
+    params["crs"] = "epsg:4326"
+    params["bbox"] = f"{longitude},{latitude - height},{longitude + width},{latitude}"
+    params["width"] = image_width
+    params["height"] = image_height
+    params["format"] = "image/jpeg"
+
     try:
         # async with session.post(routing_url, data=json_payload) as response:
         #     response_dict = await response.json()
         # r = await session.post(routing_url, data=json_payload)
 
-        # TODO: clean this up
-        url = f"{wms_base_url}?request=GetMap&service=WMS&version=1.3.0&bbox={longitude},{latitude - height},{longitude + width},{latitude}&layers=0&styles=&crs=epsg%3A4326&width={image_width}&height={image_height}&format=image/jpeg"
+        # url = f"{wms_base_url}?request=GetMap&service=WMS&version=1.3.0&bbox={longitude},{latitude - height},{longitude + width},{latitude}&layers=0&styles=&crs=epsg%3A4326&width={image_width}&height={image_height}&format=image/jpeg"
 
-        response = requests.get(url)
+        response = requests.get(wms_base_url, params=params)
 
         image_file = io.BytesIO(response.content)
         image = Image.open(image_file)
