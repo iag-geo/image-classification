@@ -81,7 +81,7 @@ else:
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
 # process images in chunks to manage memory usage
-image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by this script)
+image_limit = 250  # roughly 8Gb RAM for this model but can spike (GPUs have a 15Gb limit that can crash this script)
 
 # how many parallel processes to run (only used for downloading images, hence can use 2x CPUs safely)
 max_concurrent_downloads = torch.multiprocessing.cpu_count() * 2
@@ -103,9 +103,8 @@ pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_postgres_connections, pg_con
 
 def main():
     full_start_time = datetime.now()
-    start_time = datetime.now()
 
-    print(f"START : swimming pool labelling : {start_time}")
+    print(f"START : swimming pool labelling : {full_start_time}")
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -234,14 +233,13 @@ def get_labels(job):
     for job_group in job_groups:
         job_count += len(job_group)
 
-    group_count = len(job_groups)
-
     # load trained model to run on selected GPU (or CPUs)
     if torch.cuda.is_available():
-        device = torch.device(f"cuda:{gpu_number}")
+        device_tag = f"cuda:{gpu_number}"
     else:
-        device = torch.device("cpu")
+        device_tag = "cpu"
 
+    device = torch.device(device_tag)
     model = torch.hub.load(yolo_home, "custom", path=model_path, source="local")
     model.to(device)
 
@@ -251,9 +249,9 @@ def get_labels(job):
 
     # for each job group download images and detect labels on them
     for job_group in job_groups:
-        i += len(job_group)
-
         start_time = datetime.now()
+
+        i += len(job_group)
 
         # Download images into memory, asynchronously in parallel
         loop = asyncio.get_event_loop()
@@ -272,8 +270,8 @@ def get_labels(job):
 
         total_image_fail_count += image_fail_count
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : images downloaded : {datetime.now() - start_time}")
-        start_time = datetime.now()
+        # print(f"\t - {device_tag} : group {i} of {job_count} : images downloaded : {datetime.now() - start_time}")
+        # start_time = datetime.now()
 
         # run inference
         results = model(image_list)
@@ -282,8 +280,8 @@ def get_labels(job):
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : pool detection done : {datetime.now() - start_time}")
-        start_time = datetime.now()
+        # print(f"\t - {device_tag} : group {i} of {job_count} : pool detection done : {datetime.now() - start_time}")
+        # start_time = datetime.now()
 
         # step through each group of results and export to database
         j = 0
@@ -309,7 +307,8 @@ def get_labels(job):
 
             j += 1
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
+        # print(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
+        print(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time}")
 
     return total_label_count, total_image_fail_count
 
