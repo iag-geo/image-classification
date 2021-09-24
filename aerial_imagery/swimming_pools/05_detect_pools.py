@@ -194,6 +194,7 @@ def get_labels(image_list, coords_list):
     coords_groups = list()
     coords_group = list()
     i = 1
+    j = 0
 
     for image in image_list:
         if i > image_limit:
@@ -201,12 +202,13 @@ def get_labels(image_list, coords_list):
             image_group = list()
             coords_groups.append(coords_group)
             coords_group = list()
-            i = 0
+            i = 1
 
         image_group.append(image)
-        coords_group.append(image)
+        coords_group.append(coords_list[j])
 
         i += 1
+        j += 1
 
     if len(image_group) > 0:
         image_groups.append(image_group)
@@ -227,10 +229,11 @@ def get_labels(image_list, coords_list):
     start_time = datetime.now()
 
     i = 0
-    j = 0
     total_label_count = 0
 
     for tensor_labels in tensor_labels_list:
+        j = 0
+
         for tensor_label in tensor_labels:
             label_list = tensor_label.tolist()
 
@@ -248,15 +251,15 @@ def get_labels(image_list, coords_list):
                 # f.close()
 
                 # get corresponding coords of image
-                latitude = coords_groups[j][i][0]
-                longitude = coords_groups[j][i][1]
+                latitude = coords_groups[i][j][0]
+                longitude = coords_groups[i][j][1]
 
                 import_label_to_postgres(latitude, longitude, label_list)
 
                 # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
-            i += 1
-        j += 1
+            j += 1
+        i += 1
 
     return start_time, total_label_count
 
