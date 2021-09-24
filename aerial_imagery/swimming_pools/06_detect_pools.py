@@ -42,22 +42,22 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 
-# # coordinates of area to process (Sydney - Inner West to Upper North Shore)
-# # ~17k image downloads take ~25 mins via IAG proxy on EC2
-# #
-# input_x_min = 151.05760
-# input_y_min = -33.90748
-# input_x_max = 151.26752
-# input_y_max = -33.74470
+# coordinates of area to process (Sydney - Inner West to Upper North Shore)
+# ~17k image downloads take ~25 mins via IAG proxy on EC2
+#
+input_x_min = 151.05760
+input_y_min = -33.90748
+input_x_max = 151.26752
+input_y_max = -33.74470
 
-# coordinates of area to process (Sydney - Inner West test area)
-# ~450 images take 1-2 mins to download
-input_x_min = 151.1331
-input_y_min = -33.8912
-# input_x_max = 151.1431
-# input_y_max = -33.8812
-input_x_max = 151.1703
-input_y_max = -33.8672
+# # coordinates of area to process (Sydney - Inner West test area)
+# # ~450 images take 1-2 mins to download
+# input_x_min = 151.1331
+# input_y_min = -33.8912
+# # input_x_max = 151.1431
+# # input_y_max = -33.8812
+# input_x_max = 151.1703
+# input_y_max = -33.8672
 
 # create images with the same pixel width & height as the training data
 width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
@@ -89,6 +89,9 @@ max_postgres_connections = max_concurrent_downloads + 1  # +1 required due to ro
 
 # get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
+
+# DEBUGGING
+# cuda_gpu_count = 4
 
 # alter concurrent download limit if using multiple GPUs
 if cuda_gpu_count > 1:
@@ -146,9 +149,9 @@ def main():
         total_label_count, total_image_fail_count = get_labels([jobs_by_gpu[0], 0])
 
     # show image download results
-    print(f"\t - {image_count} images downloaded into memory : {datetime.now() - start_time}")
-    print(f"\t\t - {total_image_fail_count} images FAILED to download")
-    print(f"\t - {total_label_count} labels imported")
+    print(f"{image_count} images downloaded into memory")
+    print(f"\t - {total_image_fail_count} images FAILED to download")
+    print(f"{total_label_count} labels imported")
     # start_time = datetime.now()
 
     # label_file_count = 0
@@ -158,12 +161,12 @@ def main():
     pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
     row = pg_cur.fetchone()
     if row is not None:
-        print(f"\t\t - {int(row[0])} missing parcel IDs")
+        print(f"\t - {int(row[0])} missing parcel IDs")
 
     pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
     row = pg_cur.fetchone()
     if row is not None:
-        print(f"\t\t - {int(row[0])} missing address IDs")
+        print(f"\t - {int(row[0])} missing address IDs")
 
     # print(f"\t - {label_file_count} images with labels")
     # print(f"\t - {no_label_file_count} images with no labels")
@@ -177,7 +180,7 @@ def main():
 
 def get_jobs():
     """Create job list by cycling through the map image top/left coordinates going left then down.
-    Then split jobs based on:
+       Then split jobs based on:
          a. the number of GPUs being used (if any); AND
          b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
 
@@ -221,9 +224,15 @@ def split_list(lst, n):
 
 
 def get_labels(job):
+    """Downloads images asynchronously & in parallel then runs them through the model to detect pools"""
 
     job_groups = job[0]
     gpu_number = job[1]
+
+    # get job counts
+    job_count = 0
+    for job_group in job_groups:
+        job_count += len(job_group)
 
     group_count = len(job_groups)
 
@@ -238,22 +247,22 @@ def get_labels(job):
 
     total_image_fail_count = 0
     total_label_count = 0
-    i = 1
+    i = 0
 
     # for each job group download images and detect labels on them
     for job_group in job_groups:
+        i += len(job_group)
+
         start_time = datetime.now()
 
         # Download images into memory, asynchronously in parallel
         loop = asyncio.get_event_loop()
         image_download_list = loop.run_until_complete(async_get_images(job_group))
 
-        # check download results
-        image_fail_count = 0
-
         # get rid of image download failures and count them
         coords_list = list()
         image_list = list()
+        image_fail_count = 0
         for image_download in image_download_list:
             if image_download is not None:
                 coords_list.append(image_download[0])
@@ -263,7 +272,7 @@ def get_labels(job):
 
         total_image_fail_count += image_fail_count
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : images downloaded   : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : images downloaded : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # run inference
@@ -273,7 +282,7 @@ def get_labels(job):
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : pool detection done : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : pool detection done : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # step through each group of results and export to database
@@ -300,9 +309,7 @@ def get_labels(job):
 
             j += 1
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : labels exported to postgres : {datetime.now() - start_time}")
-
-        i += 1
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
 
     return total_label_count, total_image_fail_count
 
