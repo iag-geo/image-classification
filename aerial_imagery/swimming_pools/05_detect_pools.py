@@ -1,3 +1,11 @@
+"""-----------------------------------------------------------------------------------------------------------------
+ Detects residential swimming pools in downloaded aerial/satellite images; using an existing trained YOLOv5 model
+ - Results are output to Postgres
+ - Runs on both CPU and GPU enabled machines. Auto-detects & scales to multiple GPUs
+
+ Author: Hugh Saalmans, Firemark Collective (IAG)
+ License: Apache v2
+-----------------------------------------------------------------------------------------------------------------"""
 
 import io
 import multiprocessing
@@ -15,6 +23,8 @@ from psycopg2 import pool
 from psycopg2.extensions import AsIs
 # from torch.multiprocessing import set_start_method
 
+# TODO: add arguments to script to get rid of the hard coding below
+
 # output tables
 label_table = "data_science.pool_labels"
 image_table = "data_science.pool_images"
@@ -30,21 +40,22 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 wms = WebMapService(wms_base_url)
 
-# # coordinates of area to process (Inner West to Upper North Shore)
+# # coordinates of area to process (Sydney - Inner West to Upper North Shore)
 # # ~17k image downloads take ~25 mins via IAG proxy on EC2
 # #
-# x_min = 151.05760
-# y_min = -33.90748
-# x_max = 151.26752
-# y_max = -33.74470
+# input_x_min = 151.05760
+# input_y_min = -33.90748
+# input_x_max = 151.26752
+# input_y_max = -33.74470
 
-# coordinates of area to process (Inner West section)
-x_min = 151.1331
-y_min = -33.8912
-# x_max = 151.1431
-# y_max = -33.8812
-x_max = 151.1703
-y_max = -33.8672
+# coordinates of area to process (Sydney - Inner West test area)
+# ~450 images take 1-2 mins to download
+input_x_min = 151.1331
+input_y_min = -33.8912
+# input_x_max = 151.1431
+# input_y_max = -33.8812
+input_x_max = 151.1703
+input_y_max = -33.8672
 
 # create images with the same pixel width & height as the training data
 width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
@@ -52,7 +63,7 @@ height = width
 image_width = 640
 image_height = image_width
 
-# auto-switch model and postgres settings while testing on both MocBook and EC2
+# auto-select model & postgres settings to allow testing on both MocBook and EC2 GPU (G4) instances
 if platform.system() == "Darwin":
     pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
 
@@ -60,12 +71,11 @@ if platform.system() == "Darwin":
     yolo_home = f"{os.path.expanduser('~')}/git/yolov5"
     model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
 
-    # how many parallel processes to run
-    # process_count = int(process_count() * 0.8)
-    process_count = 16
+    # how many parallel processes to run (only used for downloading images, hence can double safely)
+    process_count = int(multiprocessing.cpu_count() * 2)
 
     # process images in chunks to manage memory usage
-    image_limit = 400  # roughly 14Gb RAM for this model
+    image_limit = 400  # roughly 13Gb RAM for this model
 else:
     pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 
@@ -73,16 +83,14 @@ else:
     yolo_home = f"{os.path.expanduser('~')}/yolov5"
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
-    # how many parallel processes to run
-
-    # process_count = int(process_count() * 0.8)
-    process_count = 64
+    # how many parallel processes to run (only used for downloading images, hence can double safely)
+    process_count = int(multiprocessing.cpu_count() * 2)
 
     # process images in chunks to manage memory usage
-    image_limit = 400  # roughly 14Gb RAM for this model
+    image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit that must be managed by code)
 
 
-# get count of CUDA enabled GPUs
+# get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
 
 # create postgres connection pool
@@ -104,18 +112,26 @@ def main():
     pg_cur.execute(f"truncate table {label_table}")
     pg_cur.execute(f"truncate table {image_table}")
 
-    # cycle through the map images starting top/left and going left then down to create the job list
+    # -----------------------------------------------------------------------------------------------------------------
+    # Create the multiprocessing job list to download the images
+    # Cycle through the map image top/left coordinates going left then down
+    # -----------------------------------------------------------------------------------------------------------------
+
     job_list = list()
     image_count = 0
-    latitude = y_max
+    latitude = input_y_max
 
-    while latitude > y_min:
-        longitude = x_min
-        while longitude < x_max:
+    while latitude > input_y_min:
+        longitude = input_x_min
+        while longitude < input_x_max:
             image_count += 1
             job_list.append([latitude, longitude])
             longitude += width
         latitude -= height
+
+    # -----------------------------------------------------------------------------------------------------------------
+    # Download the images into memory
+    # ----------------------------------------------------------------------------------------------------------------
 
     mp_pool = multiprocessing.Pool(process_count)
     mp_results = mp_pool.imap_unordered(get_image, job_list)
@@ -254,7 +270,7 @@ def get_labels(image_list, coords_list):
                 latitude = coords_groups[i][j][0]
                 longitude = coords_groups[i][j][1]
 
-                import_label_to_postgres(latitude, longitude, label_list)
+                import_labels_to_postgres(latitude, longitude, label_list)
 
                 # print(f"Image {latitude}, {longitude} has {label_count} pools")
 
@@ -264,8 +280,11 @@ def get_labels(image_list, coords_list):
     return start_time, total_label_count
 
 
-# downloads images from a WMS service and returns a PIL image (note: coords are top/left)
 def get_image(coords):
+    """Downloads an image from a Web Map service (WMS) service into memory, saves it's bounds (as a polygon) to Postgres
+       and returns a pillow image
+
+       Note: map coords are top/left (normally bottom/left) to match pixel coordinate convention)"""
 
     latitude = coords[0]
     longitude = coords[1]
@@ -281,6 +300,8 @@ def get_image(coords):
 
         image_file = io.BytesIO(response.read())
         image = Image.open(image_file)
+
+        # DEBUG: save image to disk
         # image.save(os.path.join(script_dir, "input", f"image_{latitude}_{longitude}.jpg" ))
 
         # export image polygon to Postgres
@@ -288,32 +309,36 @@ def get_image(coords):
 
         return [latitude, longitude], image
 
-    except:
-        # probably timed out
-        print(f"NSW DCS WMS timed out for {latitude}, {longitude}")
+    except Exception as ex:
+        # request most likely timed out
+        print(f"Image download {latitude}, {longitude} FAILED: {ex}")
         return None
 
 
 def make_wkt_point(x_centre, y_centre):
+    """Creates a well known text (WKT) point geometry for insertion into database"""
     return f"POINT({x_centre} {y_centre})"
 
 
 def make_wkt_polygon(x_min, y_min, x_max, y_max):
+    """Creates a well known text (WKT) polygon geometry for insertion into database"""
     return f"POLYGON(({x_min} {y_min}, {x_min} {y_max}, {x_max} {y_max}, {x_max} {y_min}, {x_min} {y_min}))"
 
 
 def convert_label_to_polygon(latitude, longitude, label):
-    # format of inference label files is:
-    #   - left pixel
-    #   - top pixel
-    #   - right pixel
-    #   - bottom pixel
-    #   - confidence (0.00 to 1.00)
-    #   - unknown (class? always 0.0)
+    """Takes a detected label & converts it to centroid & boundary geometries for insertion into database
 
-    # e.g. [364.4530029296875, 480.5206298828125, 393.81219482421875, 512.9512939453125, 0.9367147088050842, 0.0]
+    format of inference label files is:
+      - left pixel
+      - top pixel
+      - right pixel
+      - bottom pixel
+      - confidence (0.00 to 1.00)
+      - unknown (class? always 0.0)
 
-    # these need to be converted to percentages
+    e.g. [364.4530029296875, 480.5206298828125, 393.81219482421875, 512.9512939453125, 0.9367147088050842, 0.0]"""
+
+    # these picle coords need to be converted to percentages
     label_left = float(label[0]) / float(image_width)
     label_top = float(label[1]) / float(image_height)
     label_right = float(label[2]) / float(image_width)
@@ -321,13 +346,13 @@ def convert_label_to_polygon(latitude, longitude, label):
 
     confidence = float(label[4])
 
-    # get lat/long bounding box
+    # get lat/long boundary by converting pixel coords to real world coords
     x_min = longitude + width * label_left
     y_min = latitude - height * label_bottom
     x_max = longitude + width * label_right
     y_max = latitude - height * label_top
 
-    # get lat/long centroid
+    # get centroid lat/long
     x_centre = (x_min + x_max) / 2.0
     y_centre = (y_min + y_max) / 2.0
 
@@ -339,9 +364,9 @@ def convert_label_to_polygon(latitude, longitude, label):
 
 
 def get_parcel_and_address_ids(latitude, longitude):
-    legal_parcel_id = None
-    gnaf_pid = None
-    address = None
+    """Takes a label's point and gets its address and land parcel IDs from the database.
+
+    Returns None if no match (possible due to the vagaries of addressing & land titling"""
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -357,8 +382,13 @@ def get_parcel_and_address_ids(latitude, longitude):
               where st_intersects(st_setsrid(st_makepoint({longitude}, {latitude}), 4283), cad.geom)"""
     pg_cur.execute(sql)
 
-    # TODO: import all the results. Can return multiple addresses due to strata titles & the specifics of land titling
+    # TODO: import more than the first result.
+    #   Can return multiple addresses due to strata titles & the realities of 3D land titling
     row = pg_cur.fetchone()
+
+    legal_parcel_id = None
+    gnaf_pid = None
+    address = None
 
     if row is not None:
         legal_parcel_id = row[0]
@@ -375,12 +405,15 @@ def get_parcel_and_address_ids(latitude, longitude):
 
 
 def insert_row(table_name, row):
+    """Inserts a python dictionary as a new row into a database table.
+    Allows for any number of columns and types; but column names and types MUST match existing table structure"""
+
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # get column names & values (dict keys must match existing table structure)
+    # get column names & values (dict keys must match existing table columns)
     columns = list(row.keys())
     values = [row[column] for column in columns]
 
@@ -393,8 +426,10 @@ def insert_row(table_name, row):
     pg_pool.putconn(pg_conn)
 
 
-def import_label_to_postgres(latitude, longitude, label_list):
-    # todo: fix this - the file name means nothing
+def import_labels_to_postgres(latitude, longitude, label_list):
+    """Inserts a list of labels into the database"""
+
+    # TODO: come up with a more meaningful ID for linking images with labels
     image_path = f"image_{latitude}_{longitude}.jpg"
 
     # insert row for each line in file (TODO: insert in one block of sql statements for performance lift)
@@ -403,7 +438,8 @@ def import_label_to_postgres(latitude, longitude, label_list):
         label_row["file_path"] = image_path
 
         # get label centre and polygon
-        label_row["confidence"], label_row["latitude"], label_row["longitude"], label_row["point_geom"], label_row["geom"] = \
+        label_row["confidence"], label_row["latitude"], label_row["longitude"], \
+        label_row["point_geom"], label_row["geom"] = \
             convert_label_to_polygon(latitude, longitude, label)
 
         # get legal parcel identifier & address ID (gnaf_pid)
@@ -415,7 +451,9 @@ def import_label_to_postgres(latitude, longitude, label_list):
 
 
 def import_image_to_postgres(latitude, longitude):
-    # todo: fix this - the file name means nothing
+    """Inserts an image's polygon & metadata into the database"""
+
+    # TODO: come up with a more meaningful ID for linking images with labels
     image_path = f"image_{latitude}_{longitude}.jpg"
 
     # import image bounds as polygons for reference
