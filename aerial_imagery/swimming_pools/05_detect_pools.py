@@ -30,19 +30,21 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 wms = WebMapService(wms_base_url)
 
-# coordinates of area to process (Inner West to Upper North Shore)
-x_min = 151.05760
-y_min = -33.90748
-x_max = 151.26752
-y_max = -33.74470
+# # coordinates of area to process (Inner West to Upper North Shore)
+# # ~17k image downloads take ~25 mins via IAG proxy on EC2
+# #
+# x_min = 151.05760
+# y_min = -33.90748
+# x_max = 151.26752
+# y_max = -33.74470
 
-# # coordinates of area to process (Inner West section)
-# x_min = 151.1331
-# y_min = -33.8912
-# # x_max = 151.1431
-# # y_max = -33.8812
-# x_max = 151.1703
-# y_max = -33.8672
+# coordinates of area to process (Inner West section)
+x_min = 151.1331
+y_min = -33.8912
+# x_max = 151.1431
+# y_max = -33.8812
+x_max = 151.1703
+y_max = -33.8672
 
 # create images with the same pixel width & height as the training data
 width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
@@ -178,9 +180,14 @@ def get_labels(image_list, coords_list):
     #     model.to(device)
     #     image_list = image_list.to(device)
 
-    # Run inference
-    results = model(image_list)
-    tensor_labels = results.xyxy
+    # Run inference (one image at a time for debugging
+    all_labels_list = list()
+
+    for image in image_list:
+        results = model(image)
+        # labels = results.xyxy[0].tolist()
+        all_labels_list.append(results.xyxy[0].tolist())
+
 
     print(f"\t - pool detection done : {datetime.now() - start_time}")
     start_time = datetime.now()
@@ -188,8 +195,8 @@ def get_labels(image_list, coords_list):
     i = 0
     total_label_count = 0
 
-    for tensor_label in tensor_labels:
-        label_list = tensor_label.tolist()
+    for label_list in all_labels_list:
+        # label_list = tensor_label.tolist()
 
         # # save labelled image whether it has any labels or not (for QA)
         # results.save(os.path.join(script_dir, "output"))  # or .show()
