@@ -24,7 +24,7 @@ from psycopg2.extensions import AsIs
 
 # TODO:
 #   - add arguments to script to get rid of the hard coding below
-#   - add logging
+#   - add logging fro a permanent record of processing times/issues
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -83,6 +83,7 @@ image_limit = 400  # roughly 13Gb RAM for this model (GPUs have a 15Gb limit tha
 
 # how many parallel processes to run (only used for downloading images, hence can use 2x CPUs safely)
 max_concurrent_downloads = torch.multiprocessing.cpu_count() * 2
+max_postgres_connections = max_concurrent_downloads + 1  # +1 required due to rounding error in process counts below
 
 # get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
@@ -91,8 +92,8 @@ cuda_gpu_count = torch.cuda.device_count()
 if cuda_gpu_count > 1:
     max_concurrent_downloads = math.floor(max_concurrent_downloads / cuda_gpu_count)
 
-# create postgres connection pool
-pg_pool = psycopg2.pool.SimpleConnectionPool(1, torch.multiprocessing.cpu_count() * 2, pg_connect_string)
+# create postgres connection pool (accessible across multiple processes)
+pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_postgres_connections, pg_connect_string)
 
 
 def main():
