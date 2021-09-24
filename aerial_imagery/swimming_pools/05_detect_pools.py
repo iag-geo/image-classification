@@ -91,7 +91,7 @@ if cuda_gpu_count > 1:
     max_concurrent_downloads = int(float(max_concurrent_downloads) / float(cuda_gpu_count))
 
 # create postgres connection pool
-pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_concurrent_downloads, pg_connect_string)
+pg_pool = psycopg2.pool.SimpleConnectionPool(1, torch.multiprocessing.cpu_count() * 2, pg_connect_string)
 
 
 def main():
@@ -193,7 +193,7 @@ def get_jobs():
     # split jobs by number of GPUs and limit per job group
     jobs_by_gpu = list()
 
-    # TODO: multi gpus
+
     # if cuda_gpu_count > 1:
     #
     #
@@ -227,10 +227,11 @@ def split_jobs_by_limit(job_list):
 
 
 def get_labels(job):
-    start_time = datetime.now()
 
     job_groups = job[0]
     gpu_number = job[1]
+
+    group_count = len(job_groups)
 
     # load trained model to run on selected GPU (or CPUs)
     if torch.cuda.is_available():
@@ -245,7 +246,10 @@ def get_labels(job):
     total_label_count = 0
     i = 0
 
+    # for each job group download images and detect labels on them
     for job_group in job_groups:
+        start_time = datetime.now()
+
         # Download images into memory, asynchronously in parallel
         loop = asyncio.get_event_loop()
         image_download_list = loop.run_until_complete(async_get_images(job_group))
@@ -265,7 +269,7 @@ def get_labels(job):
 
         total_image_fail_count += image_fail_count
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} : images downloaded   : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : images downloaded   : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # run inference
@@ -275,7 +279,7 @@ def get_labels(job):
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-        print(f"\t - GPU/CPU {gpu_number} : group {i} : pool detection done : {datetime.now() - start_time}")
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : pool detection done : {datetime.now() - start_time}")
         start_time = datetime.now()
 
         # step through each group of results and export to database
@@ -301,6 +305,9 @@ def get_labels(job):
                 import_labels_to_postgres(latitude, longitude, label_list)
 
             j += 1
+
+        print(f"\t - GPU/CPU {gpu_number} : group {i} of {group_count} : labels exported to postgres : {datetime.now() - start_time}")
+
         i += 1
 
     return total_label_count, total_image_fail_count
