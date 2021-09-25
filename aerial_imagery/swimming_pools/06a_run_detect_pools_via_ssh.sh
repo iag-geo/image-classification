@@ -15,6 +15,7 @@ ssh -F ${SSH_CONFIG} ${INSTANCE_ID} "conda activate yolov5; python3 ${FILENAME}"
 # dump results from Postgres and copy locally
 ssh -F ${SSH_CONFIG} ${INSTANCE_ID} "conda activate yolov5; pg_dump -Fc -d geo -t data_science.pool_images -t data_science.pool_labels -p 5432 -U ec2-user -f ~/pools.dmp --no-owner"
 scp -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID}:~/pools.dmp ${SCRIPT_DIR}/
+scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/06_detect_pools.log ${USER}@${INSTANCE_ID}:~/
 
 # load into local postgres (WARNING: force drops tables first)
 /Applications/Postgres.app/Contents/Versions/13/bin/psql -d geo -c "drop table data_science.pool_images cascade"
