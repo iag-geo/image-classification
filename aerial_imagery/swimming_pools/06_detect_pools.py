@@ -333,7 +333,7 @@ def get_labels(job):
             j += 1
 
             # logger.info(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
-            logger.info(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {label_count} labels detected")
+        logger.info(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {total_label_count} total labels detected")
 
     return total_label_count, total_image_fail_count
 
