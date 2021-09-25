@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 
 # Script builds a single EC2 instance with YOLOv5 (Python based) and Postgres/PostGIS installed
-# Also copies training and reference data from S3 and imports it into Postgres
+# Also copies pre-prepared training & reference data from S3 and imports it into Postgres
+#
+# Arguments:
+#    -p : proxy address (if behind a proxy). e.g. http://myproxy.mycorp.corp:8080
+#
+# Note: script assumes you're not using a deep learning/ML AMI.
+#   Comment out the NVIDIA driver install in 02_remote_setup.sh if you are
+#
 # Takes ~10 min to run
 
 SECONDS=0*
@@ -21,10 +28,10 @@ echo "-------------------------------------------------------------------------"
 echo " Set temp local environment vars"
 echo "-------------------------------------------------------------------------"
 
-AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI. Comment out the NVIDIA driver install in 02_remote_setup.sh if you are
-#INSTANCE_TYPE="m5d.12xlarge"
-#INSTANCE_TYPE="p3.2xlarge"  # not available to me but should be faster
-INSTANCE_TYPE="g4dn.8xlarge"
+AMI_ID="ami-00764cc25c2985858"  # private AMI - choose your own preferred AMI
+#INSTANCE_TYPE="m5d.12xlarge"  # CPU only
+#INSTANCE_TYPE="p3.2xlarge"  # not available in my VPC but should be faster
+INSTANCE_TYPE="g4dn.8xlarge"  # NVIDIA Tesla T4 instance
 
 USER="ec2-user"
 
@@ -76,14 +83,14 @@ INSTANCE_IP_ADDRESS=$(aws ec2 describe-instances --instance-ids ${INSTANCE_ID} |
 python3 -c "import sys, json; print(json.load(sys.stdin)['Reservations'][0]['Instances'][0]['PrivateIpAddress'])")
 echo "  - Private IP address : ${INSTANCE_IP_ADDRESS}"
 
-# save vars to local file
+# save instance vars to a local file for easy SSH commands
 echo "export SCRIPT_DIR=${SCRIPT_DIR}" > ~/git/temp_ec2_vars.sh
 echo "export USER=${USER}" >> ~/git/temp_ec2_vars.sh
 echo "export SSH_CONFIG=${SSH_CONFIG}" >> ~/git/temp_ec2_vars.sh
 echo "export INSTANCE_ID=${INSTANCE_ID}" >> ~/git/temp_ec2_vars.sh
 echo "export INSTANCE_IP_ADDRESS=${INSTANCE_IP_ADDRESS}" >> ~/git/temp_ec2_vars.sh
 
-# waiting for SSH to start
+# wait for SSH to start
 INSTANCE_READY=""
 while [ ! $INSTANCE_READY ]; do
     echo "  - Waiting for ready status"
@@ -94,18 +101,15 @@ while [ ! $INSTANCE_READY ]; do
     set -e
 done
 
-## get rid of overbearing IAG welcome message that obscures useful logging - doesn't work!
-#ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "cat /dev/null > ~/motd && sudo cp ~/motd /etc"
-
 echo "-------------------------------------------------------------------------"
 echo " Copy AWS credentials & supporting files and run remote script"
 echo "-------------------------------------------------------------------------"
 
-# copy AWS creds to access S3 (if required)
+# copy AWS creds to access S3
 ssh -F ${SSH_CONFIG} -o StrictHostKeyChecking=no ${INSTANCE_ID} 'mkdir ~/.aws'
 scp -F ${SSH_CONFIG} -r ${HOME}/.aws/credentials ${USER}@${INSTANCE_ID}:~/.aws/credentials
 
-# copy required files
+# copy required scripts
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/02_remote_setup.sh ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/03_create_tables.sql ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/04_load_training_data_to_postgres.py ${USER}@${INSTANCE_ID}:~/
@@ -113,7 +117,7 @@ scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/05_train_model.sh ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/06_detect_pools.py ${USER}@${INSTANCE_ID}:~/
 scp -F ${SSH_CONFIG} ${SCRIPT_DIR}/pool.yaml ${USER}@${INSTANCE_ID}:~/
 
-# install packages & environment and import data
+# setup proxy (if required) install packages & environment and import data
 if [ -n "${PROXY}" ]; then
   # set proxy permanently if required
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} \
@@ -134,12 +138,6 @@ else
   ssh -F ${SSH_CONFIG} ${USER}@${INSTANCE_ID} "sh ./02_remote_setup.sh"
 fi
 
-#echo "-------------------------------------------------------------------------"
-#echo " Port forward something if needed"
-#echo "-------------------------------------------------------------------------"
-#
-#ssh -F ${SSH_CONFIG} -fNL 8888:${INSTANCE_IP_ADDRESS}:8888 ${INSTANCE_ID}
-
 echo "-------------------------------------------------------------------------"
 duration=$SECONDS
 echo " End time : $(date)"
@@ -152,5 +150,5 @@ echo "--------------------------------------------------------------------------
 # connect
 #ssh -F ${SSH_CONFIG} ${INSTANCE_ID}
 
-# load ec2 vars (for later on)
+# load ec2 vars
 # . ~/git/temp_ec2_vars.sh
