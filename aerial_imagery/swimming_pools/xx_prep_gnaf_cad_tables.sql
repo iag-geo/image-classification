@@ -48,7 +48,7 @@ SELECT st_ymax(grid.geom) as latitude,
        grid.geom
 FROM grid
 INNER JOIN census_2016_bdys.ucl_2016_aust as ucl on st_intersects(grid.geom, ucl.geom)
-WHERE ucl.name = 'Sydney'
+WHERE ucl.ucl_name16 = 'Sydney'
 ;
 
 analyse data_science.sydney_grid;
