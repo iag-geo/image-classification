@@ -24,7 +24,7 @@ echo "-------------------------------------------------------------------------"
 AMI_ID="ami-00764cc25c2985858"  # note: this script assumes you're not using a deep learning/ML AMI. Comment out the NVIDIA driver install in 02_remote_setup.sh if you are
 #INSTANCE_TYPE="m5d.12xlarge"
 #INSTANCE_TYPE="p3.2xlarge"  # not available to me but should be faster
-INSTANCE_TYPE="g4dn.16xlarge"
+INSTANCE_TYPE="g4dn.8xlarge"
 
 USER="ec2-user"
 
