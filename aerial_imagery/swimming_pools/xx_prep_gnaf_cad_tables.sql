@@ -41,13 +41,13 @@ drop table if exists data_science.sydney_grid;
 create table data_science.sydney_grid as
 WITH grid AS (
 SELECT (ST_SquareGrid(0.0014272, geom)).*
-FROM census_2016_web.ucl WHERE name = 'Sydney'
+FROM census_2016_bdys.ucl_2016_aust WHERE ucl_name16 = 'Sydney'
 )
 SELECT st_ymax(grid.geom) as latitude,
        st_xmin(grid.geom) as longitude,
        grid.geom
 FROM grid
-INNER JOIN census_2016_web.ucl as ucl on st_intersects(grid.geom, ucl.geom)
+INNER JOIN census_2016_bdys.ucl_2016_aust as ucl on st_intersects(grid.geom, ucl.geom)
 WHERE ucl.name = 'Sydney'
 ;
 
