@@ -23,7 +23,7 @@ echo "dump postgres tables to a local folder"
 echo "---------------------------------------------------------------------------------------------------------------------"
 
 mkdir -p "${OUTPUT_FOLDER}"
-/Applications/Postgres.app/Contents/Versions/13/bin/pg_dump -Fc -d geo -t data_science.aus_cadastre_boundaries_nsw -t data_science.address_principals_nsw -p 5432 -U postgres -f "${OUTPUT_FOLDER}/gnaf-cad.dmp" --no-owner
+/Applications/Postgres.app/Contents/Versions/13/bin/pg_dump -Fc -d geo -t data_science.aus_cadastre_boundaries_nsw -t data_science.address_principals_nsw -t data_science.sydney_grid -p 5432 -U postgres -f "${OUTPUT_FOLDER}/gnaf-cad.dmp" --no-owner
 echo "GNAF & Cad exported to dump file"
 
 echo "---------------------------------------------------------------------------------------------------------------------"

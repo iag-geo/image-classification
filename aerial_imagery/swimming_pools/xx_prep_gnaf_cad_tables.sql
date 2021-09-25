@@ -36,6 +36,30 @@ CREATE INDEX address_principals_nsw_geom_idx ON data_science.address_principals_
 ALTER TABLE data_science.address_principals_nsw CLUSTER ON address_principals_nsw_geom_idx;
 
 
+-- create a grid of tiles to detect pools in covering all of Sydney
+drop table if exists data_science.sydney_grid;
+create table data_science.sydney_grid as
+WITH grid AS (
+SELECT (ST_SquareGrid(0.0014272, geom)).*
+FROM census_2016_web.ucl WHERE name = 'Sydney'
+)
+SELECT st_ymax(grid.geom) as latitude,
+       st_xmin(grid.geom) as longitude,
+       grid.geom
+FROM grid
+INNER JOIN census_2016_web.ucl as ucl on st_intersects(grid.geom, ucl.geom)
+WHERE ucl.name = 'Sydney'
+;
+
+analyse data_science.sydney_grid;
+
+CREATE INDEX sydney_grid_geom_idx ON data_science.sydney_grid USING gist (geom);
+ALTER TABLE data_science.sydney_grid CLUSTER ON sydney_grid_geom_idx;
+
+
+
+
+
 
 -- -- 14799500
 -- select count(*) from geo_propertyloc.aus_cadastre_boundaries;
