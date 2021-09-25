@@ -43,7 +43,7 @@ WITH grid AS (
 SELECT (ST_SquareGrid(0.0014272, geom)).*
 FROM census_2016_bdys.ucl_2016_aust WHERE ucl_name16 = 'Sydney'
 )
-SELECT st_ymax(grid.geom) as latitude,
+SELECT distinct st_ymax(grid.geom) as latitude,
        st_xmin(grid.geom) as longitude,
        grid.geom
 FROM grid
@@ -58,8 +58,8 @@ ALTER TABLE data_science.sydney_grid CLUSTER ON sydney_grid_geom_idx;
 
 
 
-
-
+-- 108651
+select count(*) from data_science.sydney_grid;
 
 -- -- 14799500
 -- select count(*) from geo_propertyloc.aus_cadastre_boundaries;

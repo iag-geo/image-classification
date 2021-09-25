@@ -191,7 +191,7 @@ def get_jobs():
     pg_conn.autocommit = True
     pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    pg_cur.execute(f"select latitude, longitude from {grid_table}")
+    pg_cur.execute(f"select distinct latitude, longitude from {grid_table}")
     rows = pg_cur.fetchall()
 
     job_list = [[row[0], row[1]] for row in rows]
@@ -224,6 +224,7 @@ def get_jobs():
     # split jobs by number of GPUs and limit per job group
     jobs_by_gpu = list()
 
+    # NOTE: YOLOv5 doesn't currently support multi-GPU inference
     if cuda_gpu_count > 1:
         # 1. split jobs into even groups by GPU
         jobs_per_gpu = math.ceil(len(job_list) / cuda_gpu_count)
