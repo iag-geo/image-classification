@@ -35,6 +35,7 @@ image_table = "data_science.pool_images"
 # reference tables
 gnaf_table = "data_science.address_principals_nsw"
 cad_table = "data_science.aus_cadastre_boundaries_nsw"
+grid_table = "data_science.sydney_grid"
 
 # the directory of this script
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -42,14 +43,14 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 # NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
 wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
 
-# coordinates of area to process (Sydney - Inner West to Upper North Shore)
-# ~17k image downloads take ~25 mins via IAG proxy on EC2
+# # coordinates of area to process (Sydney - Inner West to Upper North Shore)
+# # ~17k image downloads take ~25 mins via IAG proxy on EC2
+# #
+# input_x_min = 151.05760
+# input_y_min = -33.90748
+# input_x_max = 151.26752
+# input_y_max = -33.74470
 #
-input_x_min = 151.05760
-input_y_min = -33.90748
-input_x_max = 151.26752
-input_y_max = -33.74470
-
 # # coordinates of area to process (Sydney - Inner West test area)
 # # ~450 images take 1-2 mins to download
 # input_x_min = 151.1331
@@ -178,23 +179,47 @@ def main():
 
 
 def get_jobs():
-    """Create job list by cycling through the map image top/left coordinates going left then down.
+    """Create job list by getting list o lat/longs from Postgres table.
        Then split jobs based on:
          a. the number of GPUs being used (if any); AND
          b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
 
-    # create job list
-    job_list = list()
-    image_count = 0
-    latitude = input_y_max
+    # new method - get lat/long grid from Postgres table (Sydney urban area)
 
-    while latitude > input_y_min:
-        longitude = input_x_min
-        while longitude < input_x_max:
-            image_count += 1
-            job_list.append([latitude, longitude])
-            longitude += width
-        latitude -= height
+    # get postgres connection from pool
+    pg_conn = pg_pool.getconn()
+    pg_conn.autocommit = True
+    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    pg_cur.execute(f"select latitude, longitude from {grid_table}")
+    rows = pg_cur.fetchall()
+
+    job_list = [[row[0], row[1]] for row in rows]
+    image_count = len(job_list)
+
+    # clean up postgres connection
+    pg_cur.close()
+    pg_pool.putconn(pg_conn)
+
+    # old method - a user defined grid
+
+    # """Create job list by cycling through the map image top/left coordinates going left then down.
+    #    Then split jobs based on:
+    #      a. the number of GPUs being used (if any); AND
+    #      b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
+
+    # # create job list
+    # job_list = list()
+    # image_count = 0
+    # latitude = input_y_max
+    #
+    # while latitude > input_y_min:
+    #     longitude = input_x_min
+    #     while longitude < input_x_max:
+    #         image_count += 1
+    #         job_list.append([latitude, longitude])
+    #         longitude += width
+    #     latitude -= height
 
     # split jobs by number of GPUs and limit per job group
     jobs_by_gpu = list()
