@@ -10,6 +10,7 @@
 import aiohttp
 import asyncio
 import io
+import logging.config
 import math
 import os
 import platform
@@ -26,7 +27,6 @@ from psycopg2.extensions import AsIs
 
 # TODO:
 #   - add arguments to script to get rid of the hard coding below
-#   - add logging fro a permanent record of processing times/issues
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -105,7 +105,7 @@ pg_pool = psycopg2.pool.SimpleConnectionPool(1, max_postgres_connections, pg_con
 def main():
     full_start_time = datetime.now()
 
-    print(f"START : swimming pool labelling : {full_start_time}")
+    logger.info(f"START : swimming pool labelling : {full_start_time}")
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -149,9 +149,9 @@ def main():
         total_label_count, total_image_fail_count = get_labels([jobs_by_gpu[0], 0])
 
     # show image download results
-    print(f"{image_count} images downloaded into memory")
-    print(f"\t - {total_image_fail_count} images FAILED to download")
-    print(f"{total_label_count} labels imported")
+    logger.info(f"{image_count} images downloaded into memory")
+    logger.warning(f"\t - {total_image_fail_count} images FAILED to download")
+    logger.info(f"{total_label_count} labels imported")
     # start_time = datetime.now()
 
     # label_file_count = 0
@@ -161,21 +161,21 @@ def main():
     pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
     row = pg_cur.fetchone()
     if row is not None:
-        print(f"\t - {int(row[0])} missing parcel IDs")
+        logger.warning(f"\t - {int(row[0])} missing parcel IDs")
 
     pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
     row = pg_cur.fetchone()
     if row is not None:
-        print(f"\t - {int(row[0])} missing address IDs")
+        logger.warning(f"\t - {int(row[0])} missing address IDs")
 
-    # print(f"\t - {label_file_count} images with labels")
-    # print(f"\t - {no_label_file_count} images with no labels")
+    # logger.info(f"\t - {label_file_count} images with labels")
+    # logger.info(f"\t - {no_label_file_count} images with no labels")
 
     # clean up postgres connection
     pg_cur.close()
     pg_pool.putconn(pg_conn)
 
-    print(f"FINISHED : swimming pool labelling : {datetime.now() - full_start_time}")
+    logger.info(f"FINISHED : swimming pool labelling : {datetime.now() - full_start_time}")
 
 
 def get_jobs():
@@ -295,7 +295,7 @@ def get_labels(job):
 
         total_image_fail_count += image_fail_count
 
-        # print(f"\t - {device_tag} : group {i} of {job_count} : images downloaded : {datetime.now() - start_time}")
+        # logger.info(f"\t - {device_tag} : group {i} of {job_count} : images downloaded : {datetime.now() - start_time}")
         # start_time = datetime.now()
 
         # run inference
@@ -305,7 +305,7 @@ def get_labels(job):
         # DEBUG: save labelled images
         # results.save(os.path.join(script_dir, "output"))
 
-        # print(f"\t - {device_tag} : group {i} of {job_count} : pool detection done : {datetime.now() - start_time}")
+        # logger.info(f"\t - {device_tag} : group {i} of {job_count} : pool detection done : {datetime.now() - start_time}")
         # start_time = datetime.now()
 
         # step through each group of results and export to database
@@ -326,14 +326,14 @@ def get_labels(job):
                 # f = open(os.path.join(script_dir, "labels", f"test_image_{latitude}_{longitude}.txt"), "w")
                 # f.write("\n".join(" ".join(map(str, row)) for row in results_list))
                 # f.close()
-                # print(f"Image {latitude}, {longitude} has {label_count} pools")
+                # logger.info(f"Image {latitude}, {longitude} has {label_count} pools")
 
                 import_labels_to_postgres(latitude, longitude, label_list)
 
             j += 1
 
-            # print(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
-            print(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {label_count} labels detected")
+            # logger.info(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
+            logger.info(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {label_count} labels detected")
 
     return total_label_count, total_image_fail_count
 
@@ -408,7 +408,7 @@ async def get_image(session, coords):
 
     except Exception as ex:
         # request most likely timed out
-        print(f"Image download {latitude}, {longitude} FAILED: {ex}")
+        logger.warning(f"Image download {latitude}, {longitude} FAILED: {ex}")
         return None
 
 
@@ -566,4 +566,23 @@ def import_image_to_postgres(latitude, longitude):
 
 
 if __name__ == "__main__":
+    # setup logging
+    logger = logging.getLogger()
+
+    # set logger
+    log_file = os.path.abspath(__file__).replace(".py", ".log")
+    logging.basicConfig(filename=log_file, level=logging.DEBUG, format="%(asctime)s %(message)s",
+                        datefmt="%m/%d/%Y %I:%M:%S %p")
+
+    # setup logger to write to screen as well as writing to log file
+    # define a Handler which writes INFO messages or higher to the sys.stderr
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    # set a format which is simpler for console use
+    formatter = logging.Formatter("%(name)-12s: %(levelname)-8s %(message)s")
+    # tell the handler to use this format
+    console.setFormatter(formatter)
+    # add the handler to the root logger
+    logging.getLogger("").addHandler(console)
+
     main()
