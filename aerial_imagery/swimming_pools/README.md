@@ -8,12 +8,12 @@ Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested 
 
 **Important**: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).
 
-##Model Quality
+## Model Quality
 
 It's important to note this model is **not production grade** and should be used for learning only in it's current state. It creates a number of false positives. e.g. blue vehicles & shadecloths
 
 
-##Setting up Your Environment
+## Setting up Your Environment
 
 All the code you need to setup up your environment locally or in an EC2 instance is in `01_create_ec2_instance.sh` and `02_remote_setup.sh`
 
@@ -35,7 +35,7 @@ Training on a GPU enabled EC2 instance takes ~30 mins. Training wasn't tested on
 
 To detect pools from the imagery using your trained model: review and edit the user settings in `06_detect_pools.py` before running it
 
-##IMPORTANT: Optional Reference Data
+## IMPORTANT: Optional Reference Data
 
 Both the training & inference processes can use reference Australian address and property data to return an address for each pool found. As the property data ([Geoscape Land Parcels](https://geoscape.com.au/data/land-parcels/)) is not open data - the use of this data is optional.
 - When training the model: `04_load_training_data_to_postgres.py` doesn't need to be run and can be ignored
