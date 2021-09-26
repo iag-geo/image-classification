@@ -20,7 +20,7 @@ If running locally, utilise the code that builds the Conda environment in the re
 
 If building an EC2 instance - the script uses a number of AWS variables in a .sh file. See `sample_aws_vars.sh`. The remote setup script also assumes your training & reference (optional) data is in AWS S3; you can comment this out and copy manually.
 
-## Training the model
+## Training the Model
 
 To train the model you'll need to download the [labelled images](https://drive.google.com/file/d/1Rj9wxkH15j2bu9HCh3O6WRmYYzZga-0e).
 
@@ -30,7 +30,7 @@ Lastly, you can run the model training using `05_train_model.sh`.
 
 Training on a GPU enabled EC2 instance takes ~30 mins. Training wasn't tested on a CPU only machine; assume it will take a number of hours.
 
-## Run Pool Detection
+## Running Pool Detection
 
 To detect pools from the imagery using your trained model: review and edit the user settings in `06_detect_pools.py` before running it
 
