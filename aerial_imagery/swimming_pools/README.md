@@ -2,7 +2,7 @@
 
 A set of Bash & Python scripts for configuring, training & running a swimming pool detection model.
 
-Uses YOLOv5 image classification with aerial imagery provided (as open data) by [NSW DCS Spatial Services](https://six.nsw.gov.au/).
+Uses YOLOv5 image classification with aerial imagery provided by [NSW DCS Spatial Services](https://six.nsw.gov.au/) under a CC-BY license ([terms & conditions](https://www.spatial.nsw.gov.au/products_and_services/web_services/terms_and_conditions))
 
 Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested on MacOS and Amazon Linux v2 (Fedora). The CPU vs GPU performance hit on pool detection is around 8-10x slower
 
