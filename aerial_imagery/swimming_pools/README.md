@@ -8,7 +8,8 @@ Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested 
 
 **Important: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).**
 
-![sample.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample.png?raw=true "Detected Pools")
+![sample.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample.png?raw=true "Detected Pools") ![sample2.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample2.png?raw=true "All of Sydney Takes ~2 Hours")
+
 
 ## Model Quality
 
@@ -41,5 +42,3 @@ To detect pools from the imagery using your trained model: review and edit the u
 Both the training & inference processes can use reference Australian address and property data to return an address for each pool found. As the property data ([Geoscape Land Parcels](https://geoscape.com.au/data/land-parcels/)) is not open data - the use of this data is optional.
 - When training the model: `04_load_training_data_to_postgres.py` doesn't need to be run and can be ignored
 - When running inference: set _use_reference_data_ to _False_ in `06_detect_pools.py`
-
-![sample2.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample2.png?raw=true "All of Sydney Takes ~2 Hours")
