@@ -11,12 +11,6 @@ from datetime import datetime
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
 
-# auto-switch model and postgres settings while testing on both MocBook and EC2
-if platform.system() == "Darwin":
-    machine_type = "macbook"
-else:
-    machine_type = "not a macbook"
-
 # how many parallel processes to run
 cpu_count = int(multiprocessing.cpu_count() * 0.8)
 

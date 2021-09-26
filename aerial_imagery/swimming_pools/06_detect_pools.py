@@ -22,66 +22,84 @@ from datetime import datetime
 from PIL import Image
 from psycopg2 import pool
 from psycopg2.extensions import AsIs
-# from torchvision import transforms
 
+gnaf_table = None
+cad_table = None
+grid_table = None
+
+input_x_min = None
+input_y_min = None
+input_x_max = None
+input_y_max = None
 
 # TODO:
 #   - add arguments to script to get rid of the hard coding below
+
+# ------------------------------------------------------------------------------------------------------------------
+# START: edit settings
+# ------------------------------------------------------------------------------------------------------------------
+
+# The use_reference_data flag below determines 2 things
+#
+# if True:
+#   1. processing will done using a grid from a Postgres table; and
+#   2. pools will be tagged with address & property info
+#
+# if False:
+#  1. processing will be done using a grid calculated from user-defined min/max coordinates (lat/longs); and
+#  2. there wil be no address or property tagging
+
+use_reference_data = True
 
 # output tables
 label_table = "data_science.pool_labels"
 image_table = "data_science.pool_images"
 
-# reference tables
-gnaf_table = "data_science.address_principals_nsw"
-cad_table = "data_science.aus_cadastre_boundaries_nsw"
-grid_table = "data_science.sydney_grid"
-
-# the directory of this script
-script_dir = os.path.dirname(os.path.realpath(__file__))
-
-# NSW DCS Web Map Service (https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Cadastre/MapServer/WMSServer?request=GetCapabilities&service=WMS)
-wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
-
-# # coordinates of area to process (Sydney - Inner West to Upper North Shore)
-# # ~17k image downloads take ~25 mins via IAG proxy on EC2
-# #
-# input_x_min = 151.05760
-# input_y_min = -33.90748
-# input_x_max = 151.26752
-# input_y_max = -33.74470
-#
-# # coordinates of area to process (Sydney - Inner West test area)
-# # ~450 images take 1-2 mins to download
-# input_x_min = 151.1331
-# input_y_min = -33.8912
-# # input_x_max = 151.1431
-# # input_y_max = -33.8812
-# input_x_max = 151.1703
-# input_y_max = -33.8672
-
-# create images with the same pixel width & height as the training data
-width = 0.0014272  # in degrees. A non-sensical unit, but accurate enough
-height = width
-image_width = 640
-image_height = image_width
+if use_reference_data:
+    # reference tables
+    gnaf_table = "data_science.address_principals_nsw"
+    cad_table = "data_science.aus_cadastre_boundaries_nsw"
+    grid_table = "data_science.sydney_grid"
+else:
+    # coordinates of area to process (Sydney Inner West test area)
+    # ~450 images (1-2 mins to download, 4 mins to detect pools)
+    input_x_min = 151.1331
+    input_y_min = -33.8912
+    input_x_max = 151.1703
+    input_y_max = -33.8672
 
 # auto-select model & postgres settings to allow testing on both MocBook and EC2 GPU (G4) instances
 if platform.system() == "Darwin":
     pg_connect_string = "dbname=geo host=localhost port=5432 user='postgres' password='password'"
 
-    # model paths
+    # yolov5 & model paths
     yolo_home = f"{os.path.expanduser('~')}/git/yolov5"
     model_path = f"{os.path.expanduser('~')}/tmp/image-classification/model/weights/best.pt"
 
 else:
     pg_connect_string = "dbname=geo host=localhost port=5432 user='ec2-user' password='ec2-user'"
 
-    # model paths
+    # yolov5 & model paths
     yolo_home = f"{os.path.expanduser('~')}/yolov5"
     model_path = f"{os.path.expanduser('~')}/yolov5/runs/train/exp/weights/best.pt"
 
-# process images in chunks to manage memory usage
+# ------------------------------------------------------------------------------------------------------------------
+# END: edit settings
+# ------------------------------------------------------------------------------------------------------------------
+
+# the directory of this script
+script_dir = os.path.dirname(os.path.realpath(__file__))
+
+# NSW DCS Aerial Imagery Web Map Service (the same one used for the training data)
+wms_base_url = "https://maps.six.nsw.gov.au/arcgis/services/public/NSW_Imagery/MapServer/WMSServer"
+
+# create images with the same pixel width & height as the training data
+width = 0.0014272  # in degrees. A non-sensical unit for width, but accurate enough
+height = width
+image_width = 640
+image_height = image_width
+
+# process images in chunks to manage memory usage (if using a GPU)
 image_limit = 250  # roughly 8Gb RAM for this model but can spike (GPUs have a 15Gb limit that can crash this script)
 
 # how many parallel processes to run (only used for downloading images, hence can use 2x CPUs safely)
@@ -90,9 +108,9 @@ max_postgres_connections = max_concurrent_downloads + 1  # +1 required due to ro
 
 # get count of CUDA enabled GPUs (= 0 for CPU only machines)
 cuda_gpu_count = torch.cuda.device_count()
-
-# DEBUGGING
-# cuda_gpu_count = 4
+# NOTE: YOLOv5 doesn't currently support multi-GPU inference - only 1 GPU is supported
+if cuda_gpu_count > 1:
+    cuda_gpu_count = 1
 
 # alter concurrent download limit if using multiple GPUs
 if cuda_gpu_count > 1:
@@ -122,6 +140,7 @@ def main():
 
     image_count, jobs_by_gpu = get_jobs()
 
+    # NOTE: YOLOv5 doesn't currently support multi-GPU inference - code is a placeholder
     if cuda_gpu_count > 1:
         # required for torch multiprocessing on GPUs
         torch.multiprocessing.set_start_method("spawn", force=True)
@@ -179,52 +198,47 @@ def main():
 
 
 def get_jobs():
-    """Create job list by getting list o lat/longs from Postgres table.
+    """Create job list by getting list of lat/longs from Postgres table or user defined min/max coords.
        Then split jobs based on:
          a. the number of GPUs being used (if any); AND
          b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
 
-    # new method - get lat/long grid from Postgres table (Sydney urban area)
+    if use_reference_data:
+        # reference grid method - get lat/longs from Postgres table
 
-    # get postgres connection from pool
-    pg_conn = pg_pool.getconn()
-    pg_conn.autocommit = True
-    pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        # get postgres connection from pool
+        pg_conn = pg_pool.getconn()
+        pg_conn.autocommit = True
+        pg_cur = pg_conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    pg_cur.execute(f"select distinct latitude, longitude from {grid_table}")
-    rows = pg_cur.fetchall()
+        pg_cur.execute(f"select distinct latitude, longitude from {grid_table}")
+        rows = pg_cur.fetchall()
 
-    job_list = [[row[0], row[1]] for row in rows]
-    image_count = len(job_list)
+        job_list = [[row[0], row[1]] for row in rows]
+        image_count = len(job_list)
 
-    # clean up postgres connection
-    pg_cur.close()
-    pg_pool.putconn(pg_conn)
+        # clean up postgres connection
+        pg_cur.close()
+        pg_pool.putconn(pg_conn)
+    else:
+        # user defined min/max coords - create grid mathematically
 
-    # old method - a user defined grid
+        job_list = list()
+        image_count = 0
+        latitude = input_y_max
 
-    # """Create job list by cycling through the map image top/left coordinates going left then down.
-    #    Then split jobs based on:
-    #      a. the number of GPUs being used (if any); AND
-    #      b. The max number of images to be processed in a single go by each GPU (to control memory usage)"""
-
-    # # create job list
-    # job_list = list()
-    # image_count = 0
-    # latitude = input_y_max
-    #
-    # while latitude > input_y_min:
-    #     longitude = input_x_min
-    #     while longitude < input_x_max:
-    #         image_count += 1
-    #         job_list.append([latitude, longitude])
-    #         longitude += width
-    #     latitude -= height
+        while latitude > input_y_min:
+            longitude = input_x_min
+            while longitude < input_x_max:
+                image_count += 1
+                job_list.append([latitude, longitude])
+                longitude += width
+            latitude -= height
 
     # split jobs by number of GPUs and limit per job group
     jobs_by_gpu = list()
 
-    # NOTE: YOLOv5 doesn't currently support multi-GPU inference
+    # NOTE: YOLOv5 doesn't currently support multi-GPU inference - code is a placeholder
     if cuda_gpu_count > 1:
         # 1. split jobs into even groups by GPU
         jobs_per_gpu = math.ceil(len(job_list) / cuda_gpu_count)
@@ -333,7 +347,6 @@ def get_labels(job):
 
             j += 1
 
-            # logger.info(f"\t - {device_tag} : group {i} of {job_count} : done - labels exported to postgres : {datetime.now() - start_time}")
         logger.info(f"\t - {device_tag} : group {i} of {job_count} : done : {datetime.now() - start_time} : {total_label_count} total labels detected")
 
     return total_label_count, total_image_fail_count
@@ -539,9 +552,10 @@ def import_labels_to_postgres(latitude, longitude, label_list):
         label_row["point_geom"], label_row["geom"] = \
             convert_label_to_polygon(latitude, longitude, label)
 
-        # get legal parcel identifier & address ID (gnaf_pid)
-        label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
-            get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
+        # get legal parcel identifier & address ID (gnaf_pid) if useing reference data
+        if use_reference_data:
+            label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
+                get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
 
         # insert into postgres
         insert_row(label_table,  label_row)
