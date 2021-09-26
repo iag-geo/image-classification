@@ -8,7 +8,9 @@ Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested 
 
 **Important: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).**
 
-![sample.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample.png?raw=true "Detected Pools") ![sample2.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample2.png?raw=true "All of Sydney Takes ~2 Hours")
+Solarized dark             |  Solarized Ocean
+:-------------------------:|:-------------------------:
+![sample.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample.png?raw=true "Detected Pools") | ![sample2.png](https://github.com/iag-geo/image-classification/blob/main/aerial_imagery/swimming_pools/sample-images/sample2.png?raw=true "All of Sydney Takes ~2 Hours")
 
 
 ## Model Quality
