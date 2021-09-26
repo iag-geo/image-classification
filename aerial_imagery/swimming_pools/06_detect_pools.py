@@ -49,7 +49,7 @@ input_y_max = None
 #  1. processing will be done using a grid calculated from user-defined min/max coordinates (lat/longs); and
 #  2. there wil be no address or property tagging
 
-use_reference_data = True
+use_reference_data = False
 
 # output tables
 label_table = "data_science.pool_labels"
@@ -176,16 +176,17 @@ def main():
     # label_file_count = 0
     # no_label_file_count = 0
 
-    # get counts of missing parcels and addresses
-    pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
-    row = pg_cur.fetchone()
-    if row is not None:
-        logger.warning(f"\t - {int(row[0])} missing parcel IDs")
+    if use_reference_data:
+        # get counts of missing parcels and addresses
+        pg_cur.execute(f"select count(*) from {label_table} where legal_parcel_id is NULL")
+        row = pg_cur.fetchone()
+        if row is not None:
+            logger.warning(f"\t - {int(row[0])} missing parcel IDs")
 
-    pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
-    row = pg_cur.fetchone()
-    if row is not None:
-        logger.warning(f"\t - {int(row[0])} missing address IDs")
+        pg_cur.execute(f"select count(*) from {label_table} where gnaf_pid is NULL")
+        row = pg_cur.fetchone()
+        if row is not None:
+            logger.warning(f"\t - {int(row[0])} missing address IDs")
 
     # logger.info(f"\t - {label_file_count} images with labels")
     # logger.info(f"\t - {no_label_file_count} images with no labels")
