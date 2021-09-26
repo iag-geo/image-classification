@@ -8,6 +8,9 @@ Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested 
 
 **Important: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).**
 
+![sample.png](https://github.com/iag-geo/image-classification/blob/master/sample-images/sample.png "Detected Pools")
+
+
 ## Model Quality
 
 It's important to note this model is **not production grade** and should be used for learning only in it's current state. It creates a number of false positives. e.g. blue vehicles & shadecloths
