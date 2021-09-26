@@ -16,5 +16,5 @@ python3 ~/yolov5/train.py --data ~/pool.yaml
 #  Optimizer stripped from runs/train/exp/weights/best.pt, 14.4MB
 #  Results saved to runs/train/exp
 
-# copy training results to S3
-aws s3 cp ~/yolov5/runs/train/exp/ s3://image-classification-swimming-pools/model/ --recursive
+## copy training results to S3
+#aws s3 cp ~/yolov5/runs/train/exp/ s3://image-classification-swimming-pools/model/ --recursive
