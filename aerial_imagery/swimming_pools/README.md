@@ -12,7 +12,6 @@ Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested 
 
 It's important to note this model is **not production grade** and should be used for learning only in it's current state. It creates a number of false positives. e.g. blue vehicles & shadecloths
 
-
 ## Setting up Your Environment
 
 All the code you need to setup up your environment locally or in an EC2 instance is in `01_create_ec2_instance.sh` and `02_remote_setup.sh`
@@ -31,7 +30,7 @@ Lastly, you can run the model training using `05_train_model.sh`.
 
 Training on a GPU enabled EC2 instance takes ~30 mins. Training wasn't tested on a CPU only machine; assume it will take a number of hours.
 
-## Running Inference
+## Run Pool Detection
 
 To detect pools from the imagery using your trained model: review and edit the user settings in `06_detect_pools.py` before running it
 
