@@ -6,7 +6,7 @@ Uses YOLOv5 image classification with aerial imagery provided (as open data) by 
 
 Runs on both NVIDIA CUDA GPU machines as well as CPU only; however, only tested on MacOS and Amazon Linux v2 (Fedora). The CPU vs GPU performance hit on pool detection is around 8-10x slower
 
-**Important**: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).
+**Important: there are a number of moving parts to run the model; it requires a reasonable knowledge of Linux, Bash & AWS (if running remotely).**
 
 ## Model Quality
 
