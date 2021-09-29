@@ -517,7 +517,7 @@ def get_parcel_and_address_ids(latitude, longitude):
 
 def insert_row(table_name, row):
     """Inserts a python dictionary as a new row into a database table.
-    Allows for any number of columns and types; but column names and types MUST match existing table structure"""
+    Allows for any number of columns and types; but column names and types MUST match existing columns"""
 
     # get postgres connection from pool
     pg_conn = pg_pool.getconn()
@@ -553,7 +553,7 @@ def import_labels_to_postgres(latitude, longitude, label_list):
         label_row["point_geom"], label_row["geom"] = \
             convert_label_to_polygon(latitude, longitude, label)
 
-        # get legal parcel identifier & address ID (gnaf_pid) if useing reference data
+        # get legal parcel identifier & address ID (gnaf_pid) if using reference data
         if use_reference_data:
             label_row["legal_parcel_id"], label_row["gnaf_pid"], label_row["address"] = \
                 get_parcel_and_address_ids(label_row["latitude"], label_row["longitude"])
